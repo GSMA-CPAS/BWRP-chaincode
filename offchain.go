@@ -69,10 +69,12 @@ func GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID stri
 		return nil, fmt.Errorf("GetHistoryForKey found no results")
 	}
 
-	results := make([]string, 1)
+	results := make([]string, 0)
 
 	for iterator.HasNext() {
 		historyItem, err := iterator.Next()
+
+		log.Infof("HISTORY[ts=%d, tx=%s] = %s", historyItem.GetTimestamp().GetSeconds(), historyItem.GetTxId(), historyItem.GetValue())
 		if err != nil {
 			log.Errorf("failed to iterate history: %s", err.Error())
 			return nil, err

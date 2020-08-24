@@ -3,8 +3,8 @@ package offchain
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
+	"chaincode/offchain_rest/historyshimtest"
 	"chaincode/offchain_rest/mocks"
-	"chaincode/offchain_rest/mockstub"
 	"fmt"
 	"testing"
 
@@ -51,42 +51,34 @@ func fakeCreator(mspID string, idbytes []byte) ([]byte, error) {
 	return b, err
 }
 
-/*
 func TestGetAllSignatures(t *testing.T) {
 	document := "mydocument"
 
 	contract := RoamingSmartContract{}
-	shimStub := shimtest.NewMockStub("Test", nil)
 
-	shimStub.Creator, _ = fakeCreator(t, "org1MSP", []byte(cert))
-
-	clientID, err := cid.New(shimStub)
+	chaincodeStub, transactionContext, err := prepareStubs()
 	require.NoError(t, err)
-	transactionContext := &mocks.TransactionContext{}
-
-	transactionContext.GetStubReturns(shimStub)
-	transactionContext.GetClientIdentityReturns(clientID)
 
 	key1 := CreateSecretKey(document, "org1MSP")
 
 	// start tx
-	shimStub.MockTransactionStart("txid_dummy_init1")
+	chaincodeStub.MockTransactionStart("tx1")
 	// store signature
 	err = contract.StoreSignature(transactionContext, key1, "{ 'payload' : '1', 'signature' : '0xabcd'}")
 	require.NoError(t, err)
 	// execute tx
-	shimStub.MockTransactionEnd("txid_dummy_init1")
+	chaincodeStub.MockTransactionEnd("tx1")
 
 	// start tx
-	shimStub.MockTransactionStart("txid_dummy_init2")
+	chaincodeStub.MockTransactionStart("tx2")
 	// store signature
 	err = contract.StoreSignature(transactionContext, key1, "{ 'payload' : '2', 'signature' : '0xabcd'}")
 	require.NoError(t, err)
 	// execute tx
-	shimStub.MockTransactionEnd("txid_dummy_init2")
+	chaincodeStub.MockTransactionEnd("tx2")
 
 	// debug
-	dumpAllPartialStates(t, shimStub, "owner~type~key")
+	dumpAllPartialStates(t, transactionContext, "owner~type~key")
 
 	signatures, err := GetSignatures(transactionContext, "org1MSP", key1)
 	//TODO: mock setup returns "not implemented" for GetHistoryForKey
@@ -98,18 +90,19 @@ func TestGetAllSignatures(t *testing.T) {
 	}
 
 }
-*/
 
-func prepareStubs() (*mocks.TransactionContext, error) {
-	chaincodeStub := &mocks.ChaincodeStub{}
-	ledger := mockstub.NewLedger(chaincodeStub)
+func prepareStubs() (*historyshimtest.MockStub, *mocks.TransactionContext, error) {
+	chaincodeStub := historyshimtest.NewMockStub("Test", nil)
 
 	creator, err := fakeCreator("org1MSP", []byte(cert))
-	chaincodeStub.GetCreatorReturns(creator, err)
+	chaincodeStub.Creator = creator
+	if err != nil {
+		return nil, nil, err
+	}
 
 	clientID, err := cid.New(chaincodeStub)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// tell the mock setup what to return
@@ -117,19 +110,13 @@ func prepareStubs() (*mocks.TransactionContext, error) {
 	transactionContext.GetStubReturns(chaincodeStub)
 	transactionContext.GetClientIdentityReturns(clientID)
 
-	// tell the mock which functions to use
-	chaincodeStub.CreateCompositeKeyCalls(shim.CreateCompositeKey)
-	chaincodeStub.PutStateCalls(ledger.PutState)
-	chaincodeStub.GetStateCalls(ledger.GetState)
-	chaincodeStub.GetStateByPartialCompositeKeyReturns(ledger.GetStateByPartialCompositeKey, nil)
-
-	return transactionContext, nil
+	return chaincodeStub, transactionContext, nil
 }
 
 func TestStoreSignature(t *testing.T) {
 	contract := RoamingSmartContract{}
 
-	transactionContext, err := prepareStubs()
+	_, transactionContext, err := prepareStubs()
 	require.NoError(t, err)
 
 	// start tx
@@ -149,13 +136,19 @@ func TestStoreSignature(t *testing.T) {
 }
 
 func TestPutAndGetState2(t *testing.T) {
-	transactionContext, err := prepareStubs()
+	chaincodeStub, _, err := prepareStubs()
 	require.NoError(t, err)
 
 	// write data
-	chaincodeStub := transactionContext.GetStub()
-	chaincodeStub.PutState("test", []byte("test1"))
-	chaincodeStub.PutState("test", []byte("test2"))
+	chaincodeStub.MockTransactionStart("tx1")
+	err = chaincodeStub.PutState("test", []byte("test1"))
+	require.NoError(t, err)
+	chaincodeStub.MockTransactionEnd("tx1")
+
+	chaincodeStub.MockTransactionStart("tx2")
+	err = chaincodeStub.PutState("test", []byte("test2"))
+	require.NoError(t, err)
+	chaincodeStub.MockTransactionEnd("tx2")
 
 	res, err := chaincodeStub.GetState("test")
 	require.NoError(t, err)
