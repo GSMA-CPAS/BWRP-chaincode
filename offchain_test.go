@@ -3,15 +3,14 @@ package offchain
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
-	"encoding/hex"
-	"testing"
-
 	"chaincode/offchain_rest/mocks"
+	"chaincode/offchain_rest/mockstub"
+	"fmt"
+	"testing"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
 	"github.com/hyperledger/fabric-chaincode-go/shim"
-	"github.com/hyperledger/fabric-chaincode-go/shimtest"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/hyperledger/fabric-protos-go/msp"
 	log "github.com/sirupsen/logrus"
@@ -46,22 +45,20 @@ type transactionContext interface {
 	contractapi.TransactionContextInterface
 }
 
-func setCreator(t *testing.T, stub *shimtest.MockStub, mspID string, idbytes []byte) {
+func fakeCreator(mspID string, idbytes []byte) ([]byte, error) {
 	sid := &msp.SerializedIdentity{Mspid: mspID, IdBytes: idbytes}
 	b, err := proto.Marshal(sid)
-	if err != nil {
-		t.FailNow()
-	}
-	stub.Creator = b
+	return b, err
 }
 
+/*
 func TestGetAllSignatures(t *testing.T) {
 	document := "mydocument"
 
 	contract := RoamingSmartContract{}
 	shimStub := shimtest.NewMockStub("Test", nil)
 
-	setCreator(t, shimStub, "org1MSP", []byte(cert))
+	shimStub.Creator, _ = fakeCreator(t, "org1MSP", []byte(cert))
 
 	clientID, err := cid.New(shimStub)
 	require.NoError(t, err)
@@ -101,22 +98,42 @@ func TestGetAllSignatures(t *testing.T) {
 	}
 
 }
+*/
+
+func prepareStubs() (*mocks.TransactionContext, error) {
+	chaincodeStub := &mocks.ChaincodeStub{}
+	ledger := mockstub.NewLedger(chaincodeStub)
+
+	creator, err := fakeCreator("org1MSP", []byte(cert))
+	chaincodeStub.GetCreatorReturns(creator, err)
+
+	clientID, err := cid.New(chaincodeStub)
+	if err != nil {
+		return nil, err
+	}
+
+	// tell the mock setup what to return
+	transactionContext := &mocks.TransactionContext{}
+	transactionContext.GetStubReturns(chaincodeStub)
+	transactionContext.GetClientIdentityReturns(clientID)
+
+	// tell the mock which functions to use
+	chaincodeStub.CreateCompositeKeyCalls(shim.CreateCompositeKey)
+	chaincodeStub.PutStateCalls(ledger.PutState)
+	chaincodeStub.GetStateCalls(ledger.GetState)
+	chaincodeStub.GetStateByPartialCompositeKeyReturns(ledger.GetStateByPartialCompositeKey, nil)
+
+	return transactionContext, nil
+}
 
 func TestStoreSignature(t *testing.T) {
 	contract := RoamingSmartContract{}
-	shimStub := shimtest.NewMockStub("Test", nil)
 
-	setCreator(t, shimStub, "org1MSP", []byte(cert))
-
-	clientID, err := cid.New(shimStub)
+	transactionContext, err := prepareStubs()
 	require.NoError(t, err)
-	transactionContext := &mocks.TransactionContext{}
-
-	transactionContext.GetStubReturns(shimStub)
-	transactionContext.GetClientIdentityReturns(clientID)
 
 	// start tx
-	shimStub.MockTransactionStart("txid_dummy_init")
+	//shimStub.MockTransactionStart("txid_dummy_init")
 
 	// test storesignature
 	key := "0x01234KEY"
@@ -124,34 +141,33 @@ func TestStoreSignature(t *testing.T) {
 	require.NoError(t, err)
 
 	// execute tx
-	shimStub.MockTransactionEnd("txid_dummy_init")
+	//shimStub.MockTransactionEnd("txid_dummy_init")
 
-	dumpAllPartialStates(t, shimStub, "owner~type~key")
+	dumpAllPartialStates(t, transactionContext, "owner~type~key")
+
+	//	ledger.DumpLedger()
 }
 
-func TestPutAndGetState(t *testing.T) {
-	shimStub := shimtest.NewMockStub("Test", nil)
-
-	testData := []byte("test")
-
-	// test put and get state:
-	shimStub.MockTransactionStart("txid_dummy_init")
-	shimStub.PutState("test", testData)
-	shimStub.MockTransactionEnd("txid_dummy_init")
-
-	res, err := shimStub.GetState("test")
+func TestPutAndGetState2(t *testing.T) {
+	transactionContext, err := prepareStubs()
 	require.NoError(t, err)
-	if err != nil {
-		log.Errorf("ERROR")
-	}
-	log.Infof("READ [%s]\n", hex.EncodeToString(res))
-	require.Equal(t, res, testData, "data mismatch")
 
-	dumpAllStates(t, shimStub)
+	// write data
+	chaincodeStub := transactionContext.GetStub()
+	chaincodeStub.PutState("test", []byte("test1"))
+	chaincodeStub.PutState("test", []byte("test2"))
+
+	res, err := chaincodeStub.GetState("test")
+	require.NoError(t, err)
+
+	fmt.Printf("result <%q>\n", string(res))
+
+	//ledger.DumpLedger()
 }
 
-func dumpAllPartialStates(t *testing.T, stub *shimtest.MockStub, keydef string) {
-	keysIter, err := stub.GetStateByPartialCompositeKey(keydef, []string{})
+func dumpAllPartialStates(t *testing.T, transactionContext *mocks.TransactionContext, keydef string) {
+	chaincodeStub := transactionContext.GetStub()
+	keysIter, err := chaincodeStub.GetStateByPartialCompositeKey(keydef, []string{})
 	require.NoError(t, err)
 	if keysIter == nil {
 		log.Infof("no results found")
@@ -170,6 +186,8 @@ func dumpAllPartialStates(t *testing.T, stub *shimtest.MockStub, keydef string) 
 	}
 	log.Infof("================= done")
 }
+
+/*
 
 func dumpAllStates(t *testing.T, stub *shimtest.MockStub) {
 	keysIter, err := stub.GetStateByRange("", "")
@@ -199,3 +217,4 @@ func checkState(t *testing.T, stub *shimtest.MockStub, name string, value string
 	require.NotNil(t, bytes)
 	require.EqualValues(t, string(bytes), value)
 }
+*/

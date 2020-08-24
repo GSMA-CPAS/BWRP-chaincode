@@ -176,7 +176,7 @@ publicCert: X509Certificate
 signature: signature}
 */
 
-// StoreDocument will store contract Data locally
+// StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
 func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, data string) error {
 	// get the caller MSPID
