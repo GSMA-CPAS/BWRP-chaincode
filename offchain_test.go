@@ -128,7 +128,8 @@ func TestExchangeAndSigning(t *testing.T) {
 	// start tx
 	mockStub.MockTransactionStart("tx1")
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	contractORG1.StoreSignature(txContextORG1, storagekeyORG1, signatureORG1)
+	err = contractORG1.StoreSignature(txContextORG1, storagekeyORG1, signatureORG1)
+	require.NoError(t, err)
 	// execute tx
 	mockStub.MockTransactionEnd("tx1")
 
@@ -140,7 +141,8 @@ func TestExchangeAndSigning(t *testing.T) {
 	// start tx
 	mockStub.MockTransactionStart("tx2")
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	contractORG2.StoreSignature(txContextORG2, storagekeyORG2, signatureORG2)
+	err = contractORG2.StoreSignature(txContextORG2, storagekeyORG2, signatureORG2)
+	require.NoError(t, err)
 	// execute tx
 	mockStub.MockTransactionEnd("tx2")
 

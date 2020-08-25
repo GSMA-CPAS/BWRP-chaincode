@@ -1,5 +1,13 @@
 /*
- */
+	Chaincode POC
+	- hybrid approach
+	- offchain data storage (REST interface)
+	- hidden communication on chain (only partners can derive storage location)
+	- hlf composite keys for storage
+
+	See offchain_test.go for an example workflow with mocked rest interface.
+
+*/
 
 package offchain
 
@@ -129,16 +137,22 @@ func StoreData(ctx contractapi.TransactionContextInterface, key string, dataType
 		return err
 	}
 
-	// TODO: IDEA/CHECK with martin:
-	// instead of manually appending data (i.e. ledger[key] = ledger[key] . {newdata} )
-	// we could just overwrite data and use getHistoryForKey(key) to retrieve all values?
-	// NOTE: this method requires peer configuration core.ledger.history.enableHistoryDatabase to be true!
+	// TODO:
+	// make sure storageLocation is unique and prevent signature deletion by checks in chaincode
 	log.Infof("will store data of type %s on ledger: state[%s] = 0x%s", dataType, storageLocation, hex.EncodeToString(data))
 	return ctx.GetStub().PutState(storageLocation, data)
 }
 
 // StoreSignature stores a given signature on the ledger
 func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContextInterface, key string, signatureJSON string) error {
+
+	/*TODO:
+	err := ctx.GetClientIdentity().AssertAttributeValue("signDocument", "yes")
+	if err != nil {
+		log.Error("identity is not allowed to sign")
+		return err
+	}*/
+
 	return StoreData(ctx, key, "SIGNATURE", []byte(signatureJSON))
 }
 
@@ -160,19 +174,6 @@ func getCallingIdenties(ctx contractapi.TransactionContextInterface) (string, st
 	log.Infof("got IDs for MSP=%s and user=%s", mspID, userID)
 	return mspID, userID, nil
 }
-
-/*
-CreateSignature(document):
-TODO: to in API
--	Query function
--	Creates signature over data using globally defined signature algorithm with caller’s HLF key
--	Returns signature, signature_algorithm
-crypto/ed25519 - Golang
-{algorithm: ed25519
-identity: User1@org1
-publicCert: X509Certificate
-signature: signature}
-*/
 
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
@@ -208,39 +209,3 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 
 	return nil
 }
-
-// safe to store the data:
-
-/*payload_hash :=ctx.GetStub().getState(txID)
-
-	//TODO: fetch/verify mspid
-
-	if (sha256(json_payload) == payload_hash) {
-		http.post(localhost:3030/mspid/txID, "json", json_payload)
-	}
-}
-*/
-//create instances of chaincode on remote peer, local peer and the endorsing peers
-//remote_chaincode = Chaincode(target_org_msp)
-//local_chaincode = Chaincode(local_msp)
-//endorsing_chaincode = Chaincode(endorsing_channel)
-
-//store the data locally
-//do this before pushing to ledger or remote to keep track
-//TODO: above comment is bs as we can not storeprivatedata before it is on ledger
-//local_chaincode.query(storePrivateData(txID, json_payload))
-//TODO: so alternative might be calling this directly or change order by doing the line above after putting on blockchain:
-/*	err := StorePayload("mspID", data)
-	if err != nil {
-		log.Errorf("failed to store payload: %s", err.Error())
-		return err
-	}
-*/
-//create chain entry based on the payload
-//payload_hash = sha256(json_payload)
-//txID = endorsing_chaincode.invoke(putPrivateDataHashOnChain(payload_hash)) //TODO: StatusResponse can contain txid?
-
-//TODO: check data written on remote
-
-//send the data to the remote peer
-//remote_chaincode.query(storePrivateData(txID, json_payload))
