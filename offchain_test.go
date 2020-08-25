@@ -36,7 +36,7 @@ func fakeCreator(mspID string, idbytes []byte) ([]byte, error) {
 func TestGetAllSignatures(t *testing.T) {
 	document := "mydocument"
 
-	contract := RoamingSmartContract{}
+	contract := RoamingSmartContract{restURI: "http://localhost:3333"}
 
 	chaincodeStub, transactionContext, err := prepareContext("org1MSP")
 	require.NoError(t, err)

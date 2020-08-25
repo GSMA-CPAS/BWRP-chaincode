@@ -24,11 +24,20 @@ func main() {
 	log.SetLevel(log.DebugLevel)
 
 	// instantiate chaincode
-	chaincode, err := contractapi.NewChaincode(new(RoamingSmartContract))
+	roamingChaincode := new(RoamingSmartContract)
+	chaincode, err := contractapi.NewChaincode(roamingChaincode)
 	if err != nil {
 		log.Panicf("failed to create chaincode: %s", err.Error())
 		return
 	}
+
+	// configure chaincode
+	restURI := os.Getenv("ROAMING_CHAINCODE_REST_URI")
+	if restURI == "" {
+		// default for uninitialized env vars
+		restURI = "http://localhost:3333"
+	}
+	roamingChaincode.restURI = restURI
 
 	// run chaincode
 	err = chaincode.Start()
@@ -40,6 +49,7 @@ func main() {
 // RoamingSmartContract creates a new hlf contract api
 type RoamingSmartContract struct {
 	contractapi.Contract
+	restURI string
 }
 
 // CreateSecretKey returns the hidden key used for hidden communication
@@ -142,16 +152,6 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	return StoreData(ctx, key, "SIGNATURE", []byte(signatureJSON))
 }
 
-func getRestURI() string {
-	restURI := os.Getenv("ROAMING_CHAINCODE_REST_URI")
-	if restURI != "" {
-		return restURI
-	}
-
-	// default for uninitialized env vars
-	return "http://localhost:3333"
-}
-
 // GetCallerMSPID returns the caller MSPID
 func getCallerMSPID(ctx contractapi.TransactionContextInterface) (string, error) {
 	// fetch callers MSP name
@@ -191,7 +191,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 
 	// send data via a REST request to the DB
 	// todo: use a special hostname (e.g. rest_service.local) instead of localhost
-	url := getRestURI() + "/write/" + callerMSPID + "/" + targetMSPID + "/0"
+	url := s.restURI + "/write/" + callerMSPID + "/" + targetMSPID + "/0"
 	log.Infof("will send post request to %s", url)
 
 	response, err := http.Post(url, "application/json", bytes.NewBuffer(document))
