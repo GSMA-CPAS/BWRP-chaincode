@@ -52,14 +52,14 @@ type RoamingSmartContract struct {
 	restURI string
 }
 
-// CreateSecretKey returns the hidden key used for hidden communication
-func CreateSecretKey(document string, targetMSPID string) string {
-	hash := sha256.Sum256([]byte(targetMSPID + document))
+// CreateStorageKey returns the hidden key used for hidden communication
+func (s *RoamingSmartContract) CreateStorageKey(document []byte, targetMSPID string) string {
+	hash := sha256.Sum256(append([]byte(targetMSPID), document...))
 	return hex.EncodeToString(hash[:])
 }
 
 // GetSignatures returns all signatures stored in the ledger for this key
-func GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, key string) (map[string][]byte, error) {
+func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, key string) (map[string][]byte, error) {
 	// query results for composite key without identity
 	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(compositeKeyDefinition, []string{targetMSPID, "SIGNATURE", key})
 
@@ -83,8 +83,15 @@ func GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID stri
 			return nil, err
 		}
 
+		_, attributes, err := ctx.GetStub().SplitCompositeKey(item.GetKey())
+
+		if err != nil {
+			log.Errorf("failed to split composite result: %s", err.Error())
+			return nil, err
+		}
+
 		log.Infof("state[%s] = %s", item.GetKey(), item.GetValue())
-		results[item.GetKey()] = item.GetValue()
+		results[attributes[len(attributes)-1]] = item.GetValue()
 	}
 
 	return results, nil
