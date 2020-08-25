@@ -186,7 +186,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// send data via a REST request to the DB
-	// todo: use a special hostname (e.g. rest_service.local) instead of localhost
+	// rest server is defined via ROAMING_CHAINCODE_REST_URI env setting
 	url := s.restURI + "/write/" + url.QueryEscape(invokingMSPID) + "/" + url.QueryEscape(targetMSPID) + "/" + url.QueryEscape(invokingUserID)
 	log.Infof("will send post request to %s", url)
 
