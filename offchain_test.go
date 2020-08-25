@@ -5,7 +5,6 @@ package offchain
 import (
 	"chaincode/offchain_rest/historyshimtest"
 	"chaincode/offchain_rest/mocks"
-	"fmt"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -33,47 +32,7 @@ func fakeCreator(mspID string, idbytes []byte) ([]byte, error) {
 	return b, err
 }
 
-func TestGetAllSignatures(t *testing.T) {
-	document := "mydocument"
-
-	contract := RoamingSmartContract{restURI: "http://localhost:3333"}
-
-	chaincodeStub, transactionContext, err := prepareContext("org1MSP")
-	require.NoError(t, err)
-
-	key1 := CreateSecretKey(document, "org1MSP")
-
-	// start tx
-	chaincodeStub.MockTransactionStart("tx1")
-	// store signature
-	err = contract.StoreSignature(transactionContext, key1, "{ 'payload' : '1', 'signature' : '0xabcd'}")
-	require.NoError(t, err)
-	// execute tx
-	chaincodeStub.MockTransactionEnd("tx1")
-
-	// start tx
-	chaincodeStub.MockTransactionStart("tx2")
-	// store signature
-	err = contract.StoreSignature(transactionContext, key1, "{ 'payload' : '2', 'signature' : '0xabcd'}")
-	require.NoError(t, err)
-	// execute tx
-	chaincodeStub.MockTransactionEnd("tx2")
-
-	// debug
-	dumpAllPartialStates(t, transactionContext, "owner~type~key")
-
-	signatures, err := GetSignatures(transactionContext, "org1MSP", key1)
-	//TODO: mock setup returns "not implemented" for GetHistoryForKey
-	// https://jira.hyperledger.org/browse/FAB-5507
-	require.NoError(t, err)
-
-	for i, val := range signatures {
-		log.Infof("signature[%d] = %q\n", i, val)
-	}
-
-}
-
-func prepareContext(stub *historyshimtest.MockStub, orgmsp string, cert []byte) (*mocks.TransactionContext, error) {
+func prepareTransactionContext(stub *historyshimtest.MockStub, orgmsp string, cert []byte) (*mocks.TransactionContext, error) {
 	creator, err := fakeCreator(orgmsp, cert)
 	stub.Creator = creator
 
@@ -94,59 +53,54 @@ func prepareContext(stub *historyshimtest.MockStub, orgmsp string, cert []byte) 
 	return transactionContext, nil
 }
 
-func queryStorePrivateDocument(transactionContext *TransactionContext, document []byte, orgReceiver string, targetPeer string) error {
-	//init chaincode
-	contract := RoamingSmartContract{}
-
-	//StorePrivateDocument
-	err = contract.StorePrivateDocument(transactionContext, orgReceiver, document)
-	return err
-}
-
 func TestStoreSignature(t *testing.T) {
-	const org1Name = `org1`
-	const org2Name = `org2`
-
-	//a binary test document:
+	// a binary test document:
 	document := []byte(`data!1234...`)
-	//create signature (later provided by external API/client)
-	signature := `{signer: "User1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123" }`
+	// create signature (later provided by external API/client)
+	//signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
+	//signatureORG2 := `{signer: "User2@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
 
-	//create internal state map
+	// create internal state map
 	mockStub := historyshimtest.NewMockStub("roamingState", nil)
 
-	contextOrg1, err := prepareContext(mockStub, org1Name, []byte(certOrg1))
-	//contextOrg2,err := prepareContext(mockStub, org2Name, []byte(certOrg2))
+	// init contracts
+	contractORG1 := RoamingSmartContract{restURI: "http://localhost:3001"}
+	contractORG2 := RoamingSmartContract{restURI: "http://localhost:3002"}
 
-	//send document locally on org1
-	queryStorePrivateDocument(contextOrg1, document, org1Name, `peer0.org1`)
+	txContextORG1, err := prepareTransactionContext(mockStub, ORG1.Name, ORG1.Certificate)
+	require.NoError(t, err)
+	//txContextORG2,err := prepareTransactionContext(mockStub, ORG2.Name, ORG2.Certificate)
+	//require.NoError(t, err)
 
-	//send document from org1 to org2
-	queryStorePrivateDocument(contextOrg1, document, org1Name, `peer0.org2`)
-
-	//init chaincode
-	contract := RoamingSmartContract{}
-	chaincodeStub, transactionContext, err := prepareContext("org1MSP")
+	// store document on ORG1 (local)
+	err = contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, document)
 	require.NoError(t, err)
 
-	//store secret document on both orgs
-
-	// start tx
-	chaincodeStub.MockTransactionStart("tx1")
-
-	// test storesignature
-	key := "0x01234KEY"
-	err = contract.StoreSignature(transactionContext, key, "\x1234")
+	// store document on ORG2 (remote)
+	err = contractORG2.StorePrivateDocument(txContextORG1, ORG2.Name, document)
 	require.NoError(t, err)
 
-	// execute tx
-	chaincodeStub.MockTransactionEnd("tx1")
+	// org1 signs document:
 
-	dumpAllPartialStates(t, transactionContext, "owner~type~key")
+	/*
+		// start tx
+		chaincodeStub.MockTransactionStart("tx1")
 
-	//	ledger.DumpLedger()
+		// test storesignature
+		key := "0x01234KEY"
+		err = contract.StoreSignature(transactionContext, key, "\x1234")
+		require.NoError(t, err)
+
+		// execute tx
+		chaincodeStub.MockTransactionEnd("tx1")
+
+		dumpAllPartialStates(t, transactionContext, "owner~type~key")
+
+		//	ledger.DumpLedger()
+	*/
 }
 
+/*
 func TestPutAndGetState2(t *testing.T) {
 	chaincodeStub, _, err := prepareContext("org1MSP")
 	require.NoError(t, err)
@@ -172,6 +126,7 @@ func TestPutAndGetState2(t *testing.T) {
 	//ledger.DumpLedger()
 }
 
+*/
 func dumpAllPartialStates(t *testing.T, transactionContext *mocks.TransactionContext, keydef string) {
 	chaincodeStub := transactionContext.GetStub()
 	keysIter, err := chaincodeStub.GetStateByPartialCompositeKey(keydef, []string{})
@@ -223,5 +178,46 @@ func checkState(t *testing.T, stub *shimtest.MockStub, name string, value string
 	require.NoError(t, err)
 	require.NotNil(t, bytes)
 	require.EqualValues(t, string(bytes), value)
+}
+*/
+/*
+func TestGetAllSignatures(t *testing.T) {
+	document := "mydocument"
+
+	contract := RoamingSmartContract{restURI: "http://localhost:3333"}
+
+	chaincodeStub, transactionContext, err := prepareContext("org1MSP")
+	require.NoError(t, err)
+
+	key1 := CreateSecretKey(document, "org1MSP")
+
+	// start tx
+	chaincodeStub.MockTransactionStart("tx1")
+	// store signature
+	err = contract.StoreSignature(transactionContext, key1, "{ 'payload' : '1', 'signature' : '0xabcd'}")
+	require.NoError(t, err)
+	// execute tx
+	chaincodeStub.MockTransactionEnd("tx1")
+
+	// start tx
+	chaincodeStub.MockTransactionStart("tx2")
+	// store signature
+	err = contract.StoreSignature(transactionContext, key1, "{ 'payload' : '2', 'signature' : '0xabcd'}")
+	require.NoError(t, err)
+	// execute tx
+	chaincodeStub.MockTransactionEnd("tx2")
+
+	// debug
+	dumpAllPartialStates(t, transactionContext, "owner~type~key")
+
+	signatures, err := GetSignatures(transactionContext, "org1MSP", key1)
+	//TODO: mock setup returns "not implemented" for GetHistoryForKey
+	// https://jira.hyperledger.org/browse/FAB-5507
+	require.NoError(t, err)
+
+	for i, val := range signatures {
+		log.Infof("signature[%d] = %q\n", i, val)
+	}
+
 }
 */
