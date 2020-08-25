@@ -4,13 +4,13 @@
 package offchain
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
@@ -180,7 +180,7 @@ signature: signature}
 
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
-func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, data string) error {
+func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, document []byte) error {
 	// get the caller MSPID
 	callerMSPID, err := getCallerMSPID(ctx)
 	if err != nil {
@@ -194,7 +194,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	url := getRestURI() + "/write/" + callerMSPID + "/" + targetMSPID + "/0"
 	log.Infof("will send post request to %s", url)
 
-	response, err := http.Post(url, "application/json", strings.NewReader(data))
+	response, err := http.Post(url, "application/json", bytes.NewBuffer(document))
 
 	if err != nil {
 		log.Errorf("rest request failed. error: %s", err.Error())

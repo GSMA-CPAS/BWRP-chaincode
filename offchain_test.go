@@ -17,7 +17,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const cert = `-----BEGIN CERTIFICATE-----
+const certOrg1 = `-----BEGIN CERTIFICATE-----
+MIICbjCCAhWgAwIBAgIQDOFK5ymReal7+p2habPWejAKBggqhkjOPQQDAjCBlTEQ
+MA4GA1UEBhMHR2VybWFueTEPMA0GA1UECBMGQmVybGluMQ8wDQYDVQQHEwZCZXJs
+aW4xFDASBgNVBAkTC0hhdXB0c3RyLiAxMQ4wDAYDVQQREwUxMDExNzEaMBgGA1UE
+ChMRYXRlbC5ub2RlbmVjdC5jb20xHTAbBgNVBAMTFGNhLmF0ZWwubm9kZW5lY3Qu
+Y29tMB4XDTE5MTAyMTEwMDUwMFoXDTI5MTAxODEwMDUwMFowgY0xEDAOBgNVBAYT
+B0dlcm1hbnkxDzANBgNVBAgTBkJlcmxpbjEPMA0GA1UEBxMGQmVybGluMRQwEgYD
+VQQJEwtIYXVwdHN0ci4gMTEOMAwGA1UEERMFMTAxMTcxDzANBgNVBAsTBmNsaWVu
+dDEgMB4GA1UEAwwXQWRtaW5AYXRlbC5ub2RlbmVjdC5jb20wWTATBgcqhkjOPQIB
+BggqhkjOPQMBBwNCAAQVvt/VE+1L+sIYQH0HklhrP/FXuryomsVGvWNMnvJUtqu+
+8r5t8si56qApO41g2+WIJZrjUBYgdrSB2yRgQ2/8o00wSzAOBgNVHQ8BAf8EBAMC
+B4AwDAYDVR0TAQH/BAIwADArBgNVHSMEJDAigCC1O2t3N76Q4z2wSagPevCdTjbv
+RdCmMZops5IRJ8W4pTAKBggqhkjOPQQDAgNHADBEAiBx74S2GTEscgAKwmWL5RpD
+y1cOxZNf4ydNmkTbfbB3yAIgPAoBX/zPDtWHRwrcXqnhGe/gRY0gH4kiiem3YFZE
+6fM=
+-----END CERTIFICATE-----
+`
+
+const certOrg2 = `-----BEGIN CERTIFICATE-----
 MIICbjCCAhWgAwIBAgIQDOFK5ymReal7+p2habPWejAKBggqhkjOPQQDAjCBlTEQ
 MA4GA1UEBhMHR2VybWFueTEPMA0GA1UECBMGQmVybGluMQ8wDQYDVQQHEwZCZXJs
 aW4xFDASBgNVBAkTC0hhdXB0c3RyLiAxMQ4wDAYDVQQREwUxMDExNzEaMBgGA1UE
@@ -56,7 +74,7 @@ func TestGetAllSignatures(t *testing.T) {
 
 	contract := RoamingSmartContract{}
 
-	chaincodeStub, transactionContext, err := prepareStubs()
+	chaincodeStub, transactionContext, err := prepareContext("org1MSP")
 	require.NoError(t, err)
 
 	key1 := CreateSecretKey(document, "org1MSP")
@@ -91,36 +109,65 @@ func TestGetAllSignatures(t *testing.T) {
 
 }
 
-func prepareStubs() (*historyshimtest.MockStub, *mocks.TransactionContext, error) {
-	chaincodeStub := historyshimtest.NewMockStub("Test", nil)
-
-	creator, err := fakeCreator("org1MSP", []byte(cert))
-	chaincodeStub.Creator = creator
+func prepareContext(stub *historyshimtest.MockStub, orgmsp string, cert []byte) (*mocks.TransactionContext, error) {
+	creator, err := fakeCreator(orgmsp, cert)
+	stub.Creator = creator
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	clientID, err := cid.New(chaincodeStub)
+	clientID, err := cid.New(stub)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// tell the mock setup what to return
 	transactionContext := &mocks.TransactionContext{}
-	transactionContext.GetStubReturns(chaincodeStub)
+	transactionContext.GetStubReturns(stub)
 	transactionContext.GetClientIdentityReturns(clientID)
 
-	return chaincodeStub, transactionContext, nil
+	return transactionContext, nil
+}
+
+func queryStorePrivateDocument(transactionContext *TransactionContext, document []byte, orgReceiver string, targetPeer string) error {
+	//init chaincode
+	contract := RoamingSmartContract{}
+
+	//StorePrivateDocument
+	err = contract.StorePrivateDocument(transactionContext, orgReceiver, document)
+	return err
 }
 
 func TestStoreSignature(t *testing.T) {
-	contract := RoamingSmartContract{}
+	const org1Name = `org1`
+	const org2Name = `org2`
 
-	_, transactionContext, err := prepareStubs()
+	//a binary test document:
+	document := []byte(`data!1234...`)
+	//create signature (later provided by external API/client)
+	signature := `{signer: "User1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123" }`
+
+	//create internal state map
+	mockStub := historyshimtest.NewMockStub("roamingState", nil)
+
+	contextOrg1, err := prepareContext(mockStub, org1Name, []byte(certOrg1))
+	//contextOrg2,err := prepareContext(mockStub, org2Name, []byte(certOrg2))
+
+	//send document locally on org1
+	queryStorePrivateDocument(contextOrg1, document, org1Name, `peer0.org1`)
+
+	//send document from org1 to org2
+	queryStorePrivateDocument(contextOrg1, document, org1Name, `peer0.org2`)
+
+	//init chaincode
+	contract := RoamingSmartContract{}
+	chaincodeStub, transactionContext, err := prepareContext("org1MSP")
 	require.NoError(t, err)
 
+	//store secret document on both orgs
+
 	// start tx
-	//shimStub.MockTransactionStart("txid_dummy_init")
+	chaincodeStub.MockTransactionStart("tx1")
 
 	// test storesignature
 	key := "0x01234KEY"
@@ -128,7 +175,7 @@ func TestStoreSignature(t *testing.T) {
 	require.NoError(t, err)
 
 	// execute tx
-	//shimStub.MockTransactionEnd("txid_dummy_init")
+	chaincodeStub.MockTransactionEnd("tx1")
 
 	dumpAllPartialStates(t, transactionContext, "owner~type~key")
 
@@ -136,7 +183,7 @@ func TestStoreSignature(t *testing.T) {
 }
 
 func TestPutAndGetState2(t *testing.T) {
-	chaincodeStub, _, err := prepareStubs()
+	chaincodeStub, _, err := prepareContext("org1MSP")
 	require.NoError(t, err)
 
 	// write data
