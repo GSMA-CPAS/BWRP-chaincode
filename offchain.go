@@ -10,14 +10,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 
-	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
 )
 
-const compositeKeyDefinition string = "owner~type~key"
+const compositeKeyDefinition string = "owner~type~key~identity"
 
 func main() {
 	// set loglevel
@@ -59,39 +59,32 @@ func CreateSecretKey(document string, targetMSPID string) string {
 }
 
 // GetSignatures returns all signatures stored in the ledger for this key
-func GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, key string) ([]string, error) {
-	storageType := "SIGNATURE"
-	storageLocation, err := ctx.GetStub().CreateCompositeKey(compositeKeyDefinition, []string{targetMSPID, storageType, key})
+func GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, key string) (map[string][]byte, error) {
+	// query results for composite key without identity
+	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(compositeKeyDefinition, []string{targetMSPID, "SIGNATURE", key})
 
 	if err != nil {
-		log.Errorf("failed to fetch storageLocation: %s", err.Error())
+		log.Errorf("failed to query results for partial composite key: %s", err.Error())
 		return nil, err
 	}
 
-	log.Infof("getting history for key %s", storageLocation)
-	iterator, err := ctx.GetStub().GetHistoryForKey(storageLocation)
-	if err != nil {
-		log.Infof("failed to get history: %s", err.Error())
-		return nil, err
-	}
 	if iterator == nil {
 		log.Infof("no results found")
-		return nil, fmt.Errorf("GetHistoryForKey found no results")
+		return nil, fmt.Errorf("GetSignatures found no results")
 	}
 
-	results := make([]string, 0)
+	results := make(map[string][]byte, 0)
 
 	for iterator.HasNext() {
-		historyItem, err := iterator.Next()
+		item, err := iterator.Next()
 
-		log.Infof("HISTORY[ts=%d, tx=%s] = %s", historyItem.GetTimestamp().GetSeconds(), historyItem.GetTxId(), historyItem.GetValue())
 		if err != nil {
-			log.Errorf("failed to iterate history: %s", err.Error())
+			log.Errorf("failed to iterate results: %s", err.Error())
 			return nil, err
 		}
-		if !historyItem.GetIsDelete() {
-			results = append(results, string(historyItem.GetValue()))
-		}
+
+		log.Infof("state[%s] = %s", item.GetKey(), item.GetValue())
+		results[item.GetKey()] = item.GetValue()
 	}
 
 	return results, nil
@@ -100,15 +93,15 @@ func GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID stri
 // GetStorageLocation returns the storage location for
 // a given storageType and key by using the composite key feature
 func GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType string, key string) (string, error) {
-	// fetch calling MSP
-	callerID, err := getCallerMSPID(ctx)
+	// get the calling identity
+	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
 	if err != nil {
-		log.Errorf("failed to fetch callerid: %s", err.Error())
+		log.Errorf("failed to fetch calling identity: %s", err.Error())
 		return "", err
 	}
 
 	// construct the storage location
-	storageLocation, err := ctx.GetStub().CreateCompositeKey(compositeKeyDefinition, []string{callerID, storageType, key})
+	storageLocation, err := ctx.GetStub().CreateCompositeKey(compositeKeyDefinition, []string{invokingMSPID, storageType, key, invokingUserID})
 
 	if err != nil {
 		log.Errorf("failed to create composite key: %s", err.Error())
@@ -118,11 +111,6 @@ func GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType
 	log.Infof("got composite key for <%s> = 0x%s", compositeKeyDefinition, hex.EncodeToString([]byte(storageLocation)))
 
 	return storageLocation, nil
-}
-
-func authenticateCallerCanSign() bool {
-	// TODO!
-	return true
 }
 
 // StoreData stores given data with a given type on the ledger
@@ -144,25 +132,26 @@ func StoreData(ctx contractapi.TransactionContextInterface, key string, dataType
 
 // StoreSignature stores a given signature on the ledger
 func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContextInterface, key string, signatureJSON string) error {
-	// check authorization
-	if !authenticateCallerCanSign() {
-		return fmt.Errorf("caller is not allowed to sign. access denied")
-	}
-
 	return StoreData(ctx, key, "SIGNATURE", []byte(signatureJSON))
 }
 
-// GetCallerMSPID returns the caller MSPID
-func getCallerMSPID(ctx contractapi.TransactionContextInterface) (string, error) {
-	// fetch callers MSP name
-	msp, err := cid.GetMSPID(ctx.GetStub())
+// getCallingIdenties returns the caller MSPID and userID
+func getCallingIdenties(ctx contractapi.TransactionContextInterface) (string, string, error) {
+	// fetch calling MSP ID
+	mspID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		log.Errorf("failed to get caller MSPID: %s", err.Error())
-		return "", err
+		log.Errorf("failed to get calling identity: %s", err.Error())
+		return "", "", err
 	}
 
-	log.Infof("got caller MSPID '%s'", msp)
-	return msp, nil
+	userID, err := ctx.GetClientIdentity().GetID()
+	if err != nil {
+		log.Errorf("failed to get calling user ID: %s", err.Error())
+		return "", "", err
+	}
+
+	log.Infof("got IDs for MSP=%s and user=%s", mspID, userID)
+	return mspID, userID, nil
 }
 
 /*
@@ -181,17 +170,16 @@ signature: signature}
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
 func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, document []byte) error {
-	// get the caller MSPID
-	callerMSPID, err := getCallerMSPID(ctx)
+	// get the calling identity
+	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
 	if err != nil {
 		log.Errorf("failed to fetch MSPID: %s", err.Error())
 		return err
 	}
-	log.Infof("got MSP IDs: caller = %s, partner = %s", callerMSPID, targetMSPID)
 
 	// send data via a REST request to the DB
 	// todo: use a special hostname (e.g. rest_service.local) instead of localhost
-	url := s.restURI + "/write/" + callerMSPID + "/" + targetMSPID + "/0"
+	url := s.restURI + "/write/" + url.QueryEscape(invokingMSPID) + "/" + url.QueryEscape(targetMSPID) + "/" + url.QueryEscape(invokingUserID)
 	log.Infof("will send post request to %s", url)
 
 	response, err := http.Post(url, "application/json", bytes.NewBuffer(document))
