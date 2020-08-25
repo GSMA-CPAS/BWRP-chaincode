@@ -17,24 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const cert = `-----BEGIN CERTIFICATE-----
-MIICbjCCAhWgAwIBAgIQDOFK5ymReal7+p2habPWejAKBggqhkjOPQQDAjCBlTEQ
-MA4GA1UEBhMHR2VybWFueTEPMA0GA1UECBMGQmVybGluMQ8wDQYDVQQHEwZCZXJs
-aW4xFDASBgNVBAkTC0hhdXB0c3RyLiAxMQ4wDAYDVQQREwUxMDExNzEaMBgGA1UE
-ChMRYXRlbC5ub2RlbmVjdC5jb20xHTAbBgNVBAMTFGNhLmF0ZWwubm9kZW5lY3Qu
-Y29tMB4XDTE5MTAyMTEwMDUwMFoXDTI5MTAxODEwMDUwMFowgY0xEDAOBgNVBAYT
-B0dlcm1hbnkxDzANBgNVBAgTBkJlcmxpbjEPMA0GA1UEBxMGQmVybGluMRQwEgYD
-VQQJEwtIYXVwdHN0ci4gMTEOMAwGA1UEERMFMTAxMTcxDzANBgNVBAsTBmNsaWVu
-dDEgMB4GA1UEAwwXQWRtaW5AYXRlbC5ub2RlbmVjdC5jb20wWTATBgcqhkjOPQIB
-BggqhkjOPQMBBwNCAAQVvt/VE+1L+sIYQH0HklhrP/FXuryomsVGvWNMnvJUtqu+
-8r5t8si56qApO41g2+WIJZrjUBYgdrSB2yRgQ2/8o00wSzAOBgNVHQ8BAf8EBAMC
-B4AwDAYDVR0TAQH/BAIwADArBgNVHSMEJDAigCC1O2t3N76Q4z2wSagPevCdTjbv
-RdCmMZops5IRJ8W4pTAKBggqhkjOPQQDAgNHADBEAiBx74S2GTEscgAKwmWL5RpD
-y1cOxZNf4ydNmkTbfbB3yAIgPAoBX/zPDtWHRwrcXqnhGe/gRY0gH4kiiem3YFZE
-6fM=
------END CERTIFICATE-----
-`
-
 //go:generate counterfeiter -o mocks/chaincodestub.go -fake-name ChaincodeStub . chaincodeStub
 type chaincodeStub interface {
 	shim.ChaincodeStubInterface
@@ -94,7 +76,7 @@ func TestGetAllSignatures(t *testing.T) {
 func prepareStubs() (*historyshimtest.MockStub, *mocks.TransactionContext, error) {
 	chaincodeStub := historyshimtest.NewMockStub("Test", nil)
 
-	creator, err := fakeCreator("org1MSP", []byte(cert))
+	creator, err := fakeCreator(ORG1.Name, ORG1.Certificate)
 	chaincodeStub.Creator = creator
 	if err != nil {
 		return nil, nil, err
@@ -138,6 +120,8 @@ func TestStoreSignature(t *testing.T) {
 func TestPutAndGetState2(t *testing.T) {
 	chaincodeStub, _, err := prepareStubs()
 	require.NoError(t, err)
+
+	log.Infof("xxx %s\n", ORG1.Name)
 
 	// write data
 	chaincodeStub.MockTransactionStart("tx1")
