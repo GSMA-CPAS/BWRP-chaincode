@@ -7,6 +7,13 @@
 
 	See offchain_test.go for an example workflow with mocked rest interface.
 
+	A short note on the composite key feature 
+	 * for documentation see https://github.com/hyperledger/fabric-chaincode-go/blob/master/shim/interfaces.go
+	 * example:
+	   - let objectType = "owner~type~key~identity"
+	   - key = CreateCompositeKey(objectType, []string{ "ORG1", "SIGNATURE", "12345", "user1"})
+	   - the resulting key result will be "\x00owner~type~key~identity\x00ORG1\x00SIGNATURE\x0012345\x00user1\x00"
+	  
 */
 
 package offchain
