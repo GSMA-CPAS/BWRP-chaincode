@@ -5,8 +5,12 @@ package offchain
 import (
 	"chaincode/offchain_rest/historyshimtest"
 	"chaincode/offchain_rest/mocks"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"testing"
@@ -60,15 +64,24 @@ func prepareTransactionContext(stub *historyshimtest.MockStub, orgmsp string, ce
 }
 
 func showRestData(c echo.Context) error {
-	log.Infof("on %s got: %s", c.Echo().Server.Addr, c.Request().URL)
-	return c.String(http.StatusOK, "Print OK")
+	body, _ := ioutil.ReadAll(c.Request().Body)
+	log.Infof("on %s got: %s", c.Echo().Server.Addr, string(body))
+
+	var document map[string]interface{}
+	json.Unmarshal(body, &document)
+
+	data := document["Data"].(string)
+	hash := sha256.Sum256([]byte(data))
+
+	// return the hash in the same way as the offchain-db-adapter
+	return c.String(http.StatusOK, hex.EncodeToString(hash[:]))
 }
 
 func startRestServer(port int) {
 	e := echo.New()
 
 	// define routes
-	e.POST("/write/*", showRestData)
+	e.POST("/documents", showRestData)
 
 	// start server
 	url := ":" + strconv.Itoa(port)

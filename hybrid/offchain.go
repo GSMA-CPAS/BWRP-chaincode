@@ -7,13 +7,13 @@
 
 	See offchain_test.go for an example workflow with mocked rest interface.
 
-	A short note on the composite key feature 
+	A short note on the composite key feature
 	 * for documentation see https://github.com/hyperledger/fabric-chaincode-go/blob/master/shim/interfaces.go
 	 * example:
 	   - let objectType = "owner~type~key~identity"
 	   - key = CreateCompositeKey(objectType, []string{ "ORG1", "SIGNATURE", "12345", "user1"})
 	   - the resulting key result will be "\x00owner~type~key~identity\x00ORG1\x00SIGNATURE\x0012345\x00user1\x00"
-	  
+
 */
 
 package offchain
@@ -21,11 +21,12 @@ package offchain
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
@@ -33,6 +34,14 @@ import (
 )
 
 const compositeKeyDefinition string = "owner~type~key~identity"
+
+// ReSTDocument struct as passed to the rest interface
+type ReSTDocument struct {
+	FromMSP  string `json:"FromMSP"`
+	ToMSP    string `json:"ToMSP"`
+	SenderID string `json:"SenderID"`
+	Data     string `json:"Data"`
+}
 
 func main() {
 	// set loglevel
@@ -184,7 +193,7 @@ func getCallingIdenties(ctx contractapi.TransactionContextInterface) (string, st
 
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
-func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, document []byte) error {
+func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, payload []byte) error {
 	// get the calling identity
 	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
 	if err != nil {
@@ -192,19 +201,36 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 		return err
 	}
 
-	// send data via a REST request to the DB
-	// rest server is defined via ROAMING_CHAINCODE_REST_URI env setting
-	url := s.restURI + "/write/" + url.QueryEscape(invokingMSPID) + "/" + url.QueryEscape(targetMSPID) + "/" + url.QueryEscape(invokingUserID)
-	log.Infof("will send post request to %s", url)
-
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(document))
+	// create rest struct
+	var document ReSTDocument
+	document.FromMSP = invokingMSPID
+	document.SenderID = invokingUserID
+	document.ToMSP = targetMSPID
+	document.Data = base64.StdEncoding.EncodeToString(payload)
+	documentJSON, err := json.Marshal(document)
 
 	if err != nil {
-		log.Errorf("rest request failed. error: %s", err.Error())
+		log.Errorf("failed to marshal json")
 		return err
 	}
 
-	log.Infof("got response %s", response.Status)
+	// send data via a REST request to the DB
+	// rest server is defined via ROAMING_CHAINCODE_REST_URI env setting
+	url := s.restURI + "/documents"
+	log.Infof("will send post request to %s", url)
+
+	response, err := http.Post(url, "application/json", bytes.NewBuffer(documentJSON))
+
+	if err != nil {
+		log.Errorf("REST request failed. error: %s", err.Error())
+		return err
+	}
+
+	log.Infof("got response status %s", response.Status)
+	if response.StatusCode != 200 {
+		log.Errorf("REST request failed. status: %s", response.Status)
+		return fmt.Errorf("REST request status: %s", response.Status)
+	}
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
@@ -212,7 +238,19 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 		return err
 	}
 
-	log.Infof("got response body %s", string(body))
+	// fetch returned hash of the data
+	storedDataHash := string(body)
+	log.Infof("got response body, stored data hash %s", storedDataHash)
+
+	// calc hash over the data
+	sha256 := sha256.Sum256([]byte(document.Data))
+	dataHash := hex.EncodeToString(sha256[:])
+
+	// verify that the hash from the post request matches our data
+	if dataHash != storedDataHash {
+		log.Errorf("hash mismatch %s != %s", dataHash, storedDataHash)
+		return fmt.Errorf("error, hash mismatch")
+	}
 
 	return nil
 }
