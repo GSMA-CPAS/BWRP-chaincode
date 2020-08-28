@@ -14,6 +14,10 @@
 	   - key = CreateCompositeKey(objectType, []string{ "ORG1", "SIGNATURE", "12345", "user1"})
 	   - the resulting key result will be "\x00owner~type~key~identity\x00ORG1\x00SIGNATURE\x0012345\x00user1\x00"
 
+
+	documentation links:
+	- https://github.com/hyperledger/fabric-contract-api-go/blob/master/tutorials/getting-started.md
+	- https://github.com/hyperledger/fabric-contract-api-go/blob/master/tutorials/using-advanced-features.md
 */
 
 package offchain
@@ -74,6 +78,13 @@ func main() {
 type RoamingSmartContract struct {
 	contractapi.Contract
 	restURI string
+}
+
+// GetEvaluateTransactions returns functions of RoamingSmartContract not to be tagged as submit
+// -> add all invoke functions here
+// note: this is just a hint for the caller, this is not taken into account during invocation
+func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
+	return []string{"StoreSignature"}
 }
 
 // CreateStorageKey returns the hidden key used for hidden communication
@@ -144,8 +155,8 @@ func GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType
 	return storageLocation, nil
 }
 
-// StoreData stores given data with a given type on the ledger
-func StoreData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
+// storeData stores given data with a given type on the ledger
+func storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
 	// fetch storage location where we will store the data
 	storageLocation, err := GetStorageLocation(ctx, dataType, key)
 	if err != nil {
@@ -169,7 +180,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		return err
 	}*/
 
-	return StoreData(ctx, key, "SIGNATURE", []byte(signatureJSON))
+	return storeData(ctx, key, "SIGNATURE", []byte(signatureJSON))
 }
 
 // getCallingIdenties returns the caller MSPID and userID
