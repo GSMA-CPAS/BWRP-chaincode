@@ -20,7 +20,7 @@
 	- https://github.com/hyperledger/fabric-contract-api-go/blob/master/tutorials/using-advanced-features.md
 */
 
-package offchain
+package main
 
 import (
 	"bytes"

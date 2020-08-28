@@ -1,4 +1,4 @@
-module chaincode/offchain_rest
+module hybrid
 
 go 1.14
 

@@ -1,15 +1,15 @@
-package offchain
+package main
 
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
-	"chaincode/offchain_rest/historyshimtest"
-	"chaincode/offchain_rest/mocks"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hybrid/historyshimtest"
+	"hybrid/mocks"
 	"io/ioutil"
 	"net/http"
 	"strconv"
