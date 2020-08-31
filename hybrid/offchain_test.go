@@ -126,16 +126,17 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 
 	// QUERY store document on ORG1 (local)
-	err = contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, document)
+	_, err = contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, document)
 	require.NoError(t, err)
 
 	// QUERY store document on ORG2 (remote)
-	err = contractORG2.StorePrivateDocument(txContextORG1, ORG2.Name, document)
+	_, err = contractORG2.StorePrivateDocument(txContextORG1, ORG2.Name, document)
 	require.NoError(t, err)
 
 	// ### org1 signs document:
 	// QUERY create storage key
-	storagekeyORG1 := contractORG1.CreateStorageKey(document, ORG1.Name)
+	storagekeyORG1, err := contractORG1.CreateStorageKey(document, ORG1.Name)
+	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
 	// start tx
@@ -148,7 +149,8 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org2 signs document:
 	// QUERY create storage key
-	storagekeyORG2 := contractORG2.CreateStorageKey(document, ORG2.Name)
+	storagekeyORG2, err := contractORG2.CreateStorageKey(document, ORG2.Name)
+	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
 	// start tx
@@ -161,7 +163,8 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### (optional) org1 checks signatures of org2 on document:
 	// QUERY create expected key
-	storagekeypartnerORG2 := contractORG1.CreateStorageKey(document, ORG2.Name)
+	storagekeypartnerORG2, err := contractORG1.CreateStorageKey(document, ORG2.Name)
+	require.NoError(t, err)
 	// QUERY GetSignatures
 	signatures, err := contractORG1.GetSignatures(txContextORG1, ORG2.Name, storagekeypartnerORG2)
 	require.NoError(t, err)
@@ -169,7 +172,8 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### (optional) org2 checks signatures of org1 on document:
 	// QUERY create expected key
-	storagekeypartnerORG1 := contractORG2.CreateStorageKey(document, ORG1.Name)
+	storagekeypartnerORG1, err := contractORG2.CreateStorageKey(document, ORG1.Name)
+	require.NoError(t, err)
 	// QUERY GetSignatures
 	signatures, err = contractORG2.GetSignatures(txContextORG2, ORG1.Name, storagekeypartnerORG1)
 	require.NoError(t, err)

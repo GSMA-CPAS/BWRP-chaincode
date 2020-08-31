@@ -80,17 +80,26 @@ type RoamingSmartContract struct {
 	restURI string
 }
 
-// GetEvaluateTransactions returns functions of RoamingSmartContract not to be tagged as submit
-// -> add all invoke functions here
+// GetEvaluateTransactions returns functions of RoamingSmartContract to be tagged as evaluate (=query)
+// see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"StoreSignature"}
+	return []string{"CreateStorageKey", "GetSignatures", "GetStorageLocation", "StorePrivateDocument"}
 }
 
 // CreateStorageKey returns the hidden key used for hidden communication
-func (s *RoamingSmartContract) CreateStorageKey(document []byte, targetMSPID string) string {
+func (s *RoamingSmartContract) CreateStorageKey(document []byte, targetMSPID string) (string, error) {
+	if document == nil {
+		return "", fmt.Errorf("invalid input: document is nil")
+	}
+	if len(document) == 0 {
+		return "", fmt.Errorf("invalid input: size of document is zero")
+	}
+	if len(targetMSPID) == 0 {
+		return "", fmt.Errorf("invalid input: targetMSPID is empty")
+	}
 	hash := sha256.Sum256(append([]byte(targetMSPID), document...))
-	return hex.EncodeToString(hash[:])
+	return hex.EncodeToString(hash[:]), nil
 }
 
 // GetSignatures returns all signatures stored in the ledger for this key
@@ -204,12 +213,12 @@ func getCallingIdenties(ctx contractapi.TransactionContextInterface) (string, st
 
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
-func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, payload []byte) error {
+func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, payload []byte) (string, error) {
 	// get the calling identity
 	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
 	if err != nil {
 		log.Errorf("failed to fetch MSPID: %s", err.Error())
-		return err
+		return "", err
 	}
 
 	// create rest struct
@@ -222,7 +231,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 
 	if err != nil {
 		log.Errorf("failed to marshal json")
-		return err
+		return "", err
 	}
 
 	// send data via a REST request to the DB
@@ -234,19 +243,19 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 
 	if err != nil {
 		log.Errorf("REST request failed. error: %s", err.Error())
-		return err
+		return "", err
 	}
 
 	log.Infof("got response status %s", response.Status)
 	if response.StatusCode != 200 {
 		log.Errorf("REST request failed. status: %s", response.Status)
-		return fmt.Errorf("REST request status: %s", response.Status)
+		return "", fmt.Errorf("REST request status: %s", response.Status)
 	}
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		log.Errorf("failed to decode body (status = %s, header = %s)", response.Status, response.Header)
-		return err
+		return "", err
 	}
 
 	// fetch returned hash of the data
@@ -260,8 +269,8 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	// verify that the hash from the post request matches our data
 	if dataHash != storedDataHash {
 		log.Errorf("hash mismatch %s != %s", dataHash, storedDataHash)
-		return fmt.Errorf("error, hash mismatch")
+		return "", fmt.Errorf("error, hash mismatch")
 	}
 
-	return nil
+	return storedDataHash, nil
 }
