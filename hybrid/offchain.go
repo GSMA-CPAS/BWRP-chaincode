@@ -143,7 +143,7 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 
 // GetStorageLocation returns the storage location for
 // a given storageType and key by using the composite key feature
-func GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType string, key string) (string, error) {
+func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType string, key string) (string, error) {
 	// get the calling identity
 	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
 	if err != nil {
@@ -165,9 +165,9 @@ func GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType
 }
 
 // storeData stores given data with a given type on the ledger
-func storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
+func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
 	// fetch storage location where we will store the data
-	storageLocation, err := GetStorageLocation(ctx, dataType, key)
+	storageLocation, err := s.GetStorageLocation(ctx, dataType, key)
 	if err != nil {
 		log.Errorf("failed to fetch storageLocation: %s", err.Error())
 		return err
@@ -189,7 +189,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		return err
 	}*/
 
-	return storeData(ctx, key, "SIGNATURE", []byte(signatureJSON))
+	return s.storeData(ctx, key, "SIGNATURE", []byte(signatureJSON))
 }
 
 // getCallingIdenties returns the caller MSPID and userID
