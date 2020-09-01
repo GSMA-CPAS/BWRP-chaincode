@@ -79,8 +79,8 @@ func getImplicitCollection(ctx contractapi.TransactionContextInterface) (string,
 	return "_implicit_org_" + mspID, nil
 }
 
-// getRESTConfig returns the stored configuration for the rest endpoint
-func (s *RoamingSmartContract) getRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
+// GetRESTConfig returns the stored configuration for the rest endpoint
+func (s *RoamingSmartContract) GetRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
 	// fetch name of the senders implicit collection
 	implicitCollection, err := getImplicitCollection(ctx)
 	if err != nil {
@@ -127,7 +127,7 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"CreateStorageKey", "GetSignatures", "GetStorageLocation", "StorePrivateDocument"}
+	return []string{"CreateStorageKey", "GetSignatures", "GetStorageLocation", "StorePrivateDocument", "GetRESTConfig"}
 }
 
 // CreateStorageKey returns the hidden key used for hidden communication
@@ -275,9 +275,9 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// fetch the configured rest endpoint
-	url, err := s.getRESTConfig(ctx)
+	url, err := s.GetRESTConfig(ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}
 
 	log.Infof("will send post request to %s", url)

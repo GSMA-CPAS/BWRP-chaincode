@@ -136,6 +136,11 @@ func TestExchangeAndSigning(t *testing.T) {
 	err = contractORG1.SetRESTConfig(txContextORG1)
 	require.NoError(t, err)
 
+	// read back for debugging
+	uri, err := contractORG1.GetRESTConfig(txContextORG1)
+	fmt.Printf("> read back uri <%s>\n", uri)
+	require.NoError(t, err)
+
 	// Set transient data for Org2
 	transient["uri"] = []byte("http://localhost:3002/documents")
 	mockStub.TransientMap = transient
