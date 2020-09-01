@@ -71,20 +71,34 @@ type RoamingSmartContract struct {
 
 // getRESTConfig returns the stored configuration for the rest endpoint
 func (s *RoamingSmartContract) getRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
-	//ctx.GetStub().PutPrivateData()
-	data, err := ctx.GetStub().GetPrivateData("ROAMING_CHAINCODE_REST", "URI")
+	// get caller msp
+	mspID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return "", err
+	}
+
+	// fetch data from implicit collection
+	data, err := ctx.GetStub().GetPrivateData("_implicit_org_"+mspID, "REST_URI")
 	if err != nil {
 		return "", err
 	}
 	if data == nil {
 		return "", fmt.Errorf("REST configuration not set. Please configure it by calling setRESTConfig()")
 	}
+
+	// return result
 	return string(data), nil
 }
 
-// setRESTConfig stores the rest endpoint config
+// SetRESTConfig stores the rest endpoint config
 func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextInterface, uri string) error {
-	return ctx.GetStub().PutPrivateData("ROAMING_CHAINCODE_REST", "URI", []byte(uri))
+	// get caller msp
+	mspID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return err
+	}
+	// store data in implicit collection
+	return ctx.GetStub().PutPrivateData("_implicit_org_"+mspID, "REST_URI", []byte(uri))
 }
 
 // GetEvaluateTransactions returns functions of RoamingSmartContract to be tagged as evaluate (=query)
