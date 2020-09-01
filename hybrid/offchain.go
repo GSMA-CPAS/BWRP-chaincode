@@ -36,10 +36,9 @@ import (
 )
 
 const compositeKeyDefinition string = "owner~type~key~identity"
-const defaultReSTURI = "http://localhost:3333"
 
-// ReSTDocument struct as passed to the rest interface
-type ReSTDocument struct {
+// RESTDocument struct as passed to the rest interface
+type RESTDocument struct {
 	FromMSP  string `json:"FromMSP"`
 	ToMSP    string `json:"ToMSP"`
 	SenderID string `json:"SenderID"`
@@ -227,7 +226,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// create rest struct
-	var document ReSTDocument
+	var document RESTDocument
 	document.FromMSP = invokingMSPID
 	document.SenderID = invokingUserID
 	document.ToMSP = targetMSPID
