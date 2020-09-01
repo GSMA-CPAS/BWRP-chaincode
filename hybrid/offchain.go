@@ -25,7 +25,6 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -88,17 +87,14 @@ func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
 }
 
 // CreateStorageKey returns the hidden key used for hidden communication
-func (s *RoamingSmartContract) CreateStorageKey(document []byte, targetMSPID string) (string, error) {
-	if document == nil {
-		return "", fmt.Errorf("invalid input: document is nil")
-	}
-	if len(document) == 0 {
+func (s *RoamingSmartContract) CreateStorageKey(documentBase64 string, targetMSPID string) (string, error) {
+	if len(documentBase64) == 0 {
 		return "", fmt.Errorf("invalid input: size of document is zero")
 	}
 	if len(targetMSPID) == 0 {
 		return "", fmt.Errorf("invalid input: targetMSPID is empty")
 	}
-	hash := sha256.Sum256(append([]byte(targetMSPID), document...))
+	hash := sha256.Sum256(append([]byte(targetMSPID), documentBase64...))
 	return hex.EncodeToString(hash[:]), nil
 }
 
@@ -213,7 +209,7 @@ func getCallingIdenties(ctx contractapi.TransactionContextInterface) (string, st
 
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
-func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, payload []byte) (string, error) {
+func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, payloadBase64 string) (string, error) {
 	// get the calling identity
 	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
 	if err != nil {
@@ -226,7 +222,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	document.FromMSP = invokingMSPID
 	document.SenderID = invokingUserID
 	document.ToMSP = targetMSPID
-	document.Data = base64.StdEncoding.EncodeToString(payload)
+	document.Data = payloadBase64
 	documentJSON, err := json.Marshal(document)
 
 	if err != nil {
