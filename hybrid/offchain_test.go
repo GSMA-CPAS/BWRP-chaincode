@@ -118,17 +118,28 @@ func TestExchangeAndSigning(t *testing.T) {
 	// a test document:
 	documentBase64 := base64.StdEncoding.EncodeToString([]byte(`data!1234...`))
 
+	// Prepare transient data map
+	var transient map[string][]byte
+	transient = make(map[string][]byte)
+
 	// ORG1 as "sender"
 	txContextORG1, err := prepareTransactionContext(mockStub, ORG1.Name, ORG1.Certificate)
 	require.NoError(t, err)
+
 	// ORG2 as "receiver" and later signer
 	txContextORG2, err := prepareTransactionContext(mockStub, ORG2.Name, ORG2.Certificate)
 	require.NoError(t, err)
 
-	// configure rest endpoints
-	err = contractORG1.SetRESTConfig(txContextORG1, "http://localhost:3001/documents")
+	// Set transient data for Org1
+	transient["uri"] = []byte("http://localhost:3001/documents")
+	mockStub.TransientMap = transient
+	err = contractORG1.SetRESTConfig(txContextORG1)
 	require.NoError(t, err)
-	err = contractORG2.SetRESTConfig(txContextORG2, "http://localhost:3002/documents")
+
+	// Set transient data for Org2
+	transient["uri"] = []byte("http://localhost:3002/documents")
+	mockStub.TransientMap = transient
+	err = contractORG2.SetRESTConfig(txContextORG2)
 	require.NoError(t, err)
 
 	// QUERY store document on ORG1 (local)

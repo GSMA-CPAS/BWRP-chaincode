@@ -101,7 +101,18 @@ func (s *RoamingSmartContract) getRESTConfig(ctx contractapi.TransactionContextI
 }
 
 // SetRESTConfig stores the rest endpoint config
-func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextInterface, uri string) error {
+func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextInterface) error {
+	// uri is stored in transient map to hide it from other organizations
+	transMap, err := ctx.GetStub().GetTransient()
+	if err != nil {
+		return fmt.Errorf("Error getting transient: " + err.Error())
+	}
+
+	uri, ok := transMap["uri"]
+	if !ok {
+		return fmt.Errorf("uri not found in the transient map")
+	}
+
 	// fetch name of the senders implicit collection
 	implicitCollection, err := getImplicitCollection(ctx)
 	if err != nil {
@@ -109,7 +120,7 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 	}
 
 	// store data in implicit collection
-	return ctx.GetStub().PutPrivateData(implicitCollection, "REST_URI", []byte(uri))
+	return ctx.GetStub().PutPrivateData(implicitCollection, "REST_URI", uri)
 }
 
 // GetEvaluateTransactions returns functions of RoamingSmartContract to be tagged as evaluate (=query)
