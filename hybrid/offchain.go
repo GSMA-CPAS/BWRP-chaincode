@@ -30,13 +30,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
 )
 
 const compositeKeyDefinition string = "owner~type~key~identity"
+const defaultReSTURI = "http://localhost:3333"
 
 // ReSTDocument struct as passed to the rest interface
 type ReSTDocument struct {
@@ -58,14 +58,6 @@ func main() {
 		return
 	}
 
-	// configure chaincode
-	restURI := os.Getenv("ROAMING_CHAINCODE_REST_URI")
-	if restURI == "" {
-		// default for uninitialized env vars
-		restURI = "http://localhost:3333"
-	}
-	roamingChaincode.restURI = restURI
-
 	// run chaincode
 	err = chaincode.Start()
 	if err != nil {
@@ -76,7 +68,24 @@ func main() {
 // RoamingSmartContract creates a new hlf contract api
 type RoamingSmartContract struct {
 	contractapi.Contract
-	restURI string
+}
+
+// getRESTConfig returns the stored configuration for the rest endpoint
+func (s *RoamingSmartContract) getRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
+	//ctx.GetStub().PutPrivateData()
+	data, err := ctx.GetStub().GetPrivateData("ROAMING_CHAINCODE_REST", "URI")
+	if err != nil {
+		return "", err
+	}
+	if data == nil {
+		return "", fmt.Errorf("REST configuration not set. Please configure it by calling setRESTConfig()")
+	}
+	return string(data), nil
+}
+
+// setRESTConfig stores the rest endpoint config
+func (s *RoamingSmartContract) setRESTConfig(ctx contractapi.TransactionContextInterface, uri string) error {
+	return ctx.GetStub().PutPrivateData("ROAMING_CHAINCODE_REST", "URI", []byte(uri))
 }
 
 // GetEvaluateTransactions returns functions of RoamingSmartContract to be tagged as evaluate (=query)
@@ -230,9 +239,12 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 		return "", err
 	}
 
-	// send data via a REST request to the DB
-	// rest server is defined via ROAMING_CHAINCODE_REST_URI env setting
-	url := s.restURI + "/documents"
+	// fetch the configured rest endpoint
+	url, err := s.getRESTConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+
 	log.Infof("will send post request to %s", url)
 
 	response, err := http.Post(url, "application/json", bytes.NewBuffer(documentJSON))

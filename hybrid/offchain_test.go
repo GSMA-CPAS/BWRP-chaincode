@@ -107,9 +107,9 @@ func TestExchangeAndSigning(t *testing.T) {
 	startRestServer(3001) //ORG1
 	startRestServer(3002) //ORG2
 
-	// init contracts according to the above rest servers
-	contractORG1 := RoamingSmartContract{restURI: "http://localhost:3001"}
-	contractORG2 := RoamingSmartContract{restURI: "http://localhost:3002"}
+	// init contracts
+	contractORG1 := RoamingSmartContract{}
+	contractORG2 := RoamingSmartContract{}
 
 	// create internal state map
 	mockStub := historyshimtest.NewMockStub("roamingState", nil)
@@ -123,6 +123,12 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 	// ORG2 as "receiver" and later signer
 	txContextORG2, err := prepareTransactionContext(mockStub, ORG2.Name, ORG2.Certificate)
+	require.NoError(t, err)
+
+	// configure rest endpoints
+	err = contractORG1.setRESTConfig(txContextORG1, "http://localhost:3001/documents")
+	require.NoError(t, err)
+	err = contractORG2.setRESTConfig(txContextORG2, "http://localhost:3002/documents")
 	require.NoError(t, err)
 
 	// QUERY store document on ORG1 (local)
