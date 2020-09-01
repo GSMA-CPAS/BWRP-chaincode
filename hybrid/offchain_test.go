@@ -126,9 +126,9 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 
 	// configure rest endpoints
-	err = contractORG1.setRESTConfig(txContextORG1, "http://localhost:3001/documents")
+	err = contractORG1.SetRESTConfig(txContextORG1, "http://localhost:3001/documents")
 	require.NoError(t, err)
-	err = contractORG2.setRESTConfig(txContextORG2, "http://localhost:3002/documents")
+	err = contractORG2.SetRESTConfig(txContextORG2, "http://localhost:3002/documents")
 	require.NoError(t, err)
 
 	// QUERY store document on ORG1 (local)

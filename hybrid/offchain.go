@@ -83,7 +83,7 @@ func (s *RoamingSmartContract) getRESTConfig(ctx contractapi.TransactionContextI
 }
 
 // setRESTConfig stores the rest endpoint config
-func (s *RoamingSmartContract) setRESTConfig(ctx contractapi.TransactionContextInterface, uri string) error {
+func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextInterface, uri string) error {
 	return ctx.GetStub().PutPrivateData("ROAMING_CHAINCODE_REST", "URI", []byte(uri))
 }
 
