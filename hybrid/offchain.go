@@ -274,14 +274,14 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	response, err := http.Post(url, "application/json", bytes.NewBuffer(documentJSON))
 
 	if err != nil {
-		log.Errorf("REST request failed. error: %s", err.Error())
+		log.Errorf("REST request failed. Error: %s", err.Error())
 		return "", err
 	}
 
 	log.Infof("got response status %s", response.Status)
 	if response.StatusCode != 200 {
-		log.Errorf("REST request failed. status: %s", response.Status)
-		return "", fmt.Errorf("REST request status: %s", response.Status)
+		log.Errorf("REST request on %s failed. Status: %s", url, response.Status)
+		return "", fmt.Errorf("REST request on %s failed. Status: %s", url, response.Status)
 	}
 
 	body, err := ioutil.ReadAll(response.Body)
