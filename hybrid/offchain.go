@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
@@ -70,23 +71,11 @@ type RoamingSmartContract struct {
 	contractapi.Contract
 }
 
-// getImplicitCollection returns the implicit collection name of the sender
-func getImplicitCollection(ctx contractapi.TransactionContextInterface) (string, error) {
-	// get caller msp
-	mspID, err := ctx.GetClientIdentity().GetMSPID()
-	if err != nil {
-		return "", err
-	}
-	return "_implicit_org_" + mspID, nil
-}
-
-// GetRESTConfig returns the stored configuration for the rest endpoint
-func (s *RoamingSmartContract) GetRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
-	// fetch name of the senders implicit collection
-	implicitCollection, err := getImplicitCollection(ctx)
-	if err != nil {
-		return "", err
-	}
+// getRESTConfig returns the stored configuration for the rest endpoint
+// NOTE: this function should never be exported as it could reveal the network configuration
+func (s *RoamingSmartContract) getRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
+	// the getter will always use the local collection where this chaincode runs
+	implicitCollection := "_implicit_org_" + os.Getenv("CORE_PEER_LOCALMSPID")
 
 	// fetch data from implicit collection
 	data, err := ctx.GetStub().GetPrivateData(implicitCollection, "REST_URI")
@@ -103,21 +92,25 @@ func (s *RoamingSmartContract) GetRESTConfig(ctx contractapi.TransactionContextI
 
 // SetRESTConfig stores the rest endpoint config
 func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextInterface) error {
+	// get caller msp
+	mspID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return err
+	}
+
+	// the setter will always set the collection that he owns!
+	implicitCollection := "_implicit_org_" + mspID
+
 	// uri is stored in transient map to hide it from other organizations
 	transMap, err := ctx.GetStub().GetTransient()
 	if err != nil {
 		return fmt.Errorf("Error getting transient: " + err.Error())
 	}
 
+	// fetch transient data
 	uri, ok := transMap["uri"]
 	if !ok {
 		return fmt.Errorf("uri not found in the transient map")
-	}
-
-	// fetch name of the senders implicit collection
-	implicitCollection, err := getImplicitCollection(ctx)
-	if err != nil {
-		return err
 	}
 
 	// store data in implicit collection
@@ -128,7 +121,7 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"CreateStorageKey", "GetSignatures", "GetStorageLocation", "StorePrivateDocument", "GetRESTConfig"}
+	return []string{"CreateStorageKey", "GetSignatures", "GetStorageLocation", "StorePrivateDocument"}
 }
 
 // CreateStorageKey returns the hidden key used for hidden communication
@@ -281,7 +274,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// fetch the configured rest endpoint
-	url, err := s.GetRESTConfig(ctx)
+	url, err := s.getRESTConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}

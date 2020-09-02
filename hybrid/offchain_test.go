@@ -12,6 +12,7 @@ import (
 	"hybrid/mocks"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -137,7 +138,10 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 
 	// read back for debugging
-	uri, err := contractORG1.GetRESTConfig(txContextORG1)
+	// note that this is not allowed on chaincode calls
+	// as getRESTConfig is not exported
+	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
+	uri, err := contractORG1.getRESTConfig(txContextORG1)
 	fmt.Printf("> read back uri <%s>\n", uri)
 	require.NoError(t, err)
 
