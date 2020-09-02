@@ -43,6 +43,7 @@ type RESTDocument struct {
 	ToMSP    string `json:"ToMSP"`
 	SenderID string `json:"SenderID"`
 	Data     string `json:"Data"`
+	DataHash string `json:"DataHash"`
 }
 
 func main() {
@@ -261,12 +262,17 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 		return "", err
 	}
 
+	// calc hash over the data
+	sha256 := sha256.Sum256([]byte(payloadBase64))
+	dataHash := hex.EncodeToString(sha256[:])
+
 	// create rest struct
 	var document RESTDocument
 	document.FromMSP = invokingMSPID
 	document.SenderID = invokingUserID
 	document.ToMSP = targetMSPID
 	document.Data = payloadBase64
+	document.DataHash = dataHash
 	documentJSON, err := json.Marshal(document)
 
 	if err != nil {
@@ -304,10 +310,6 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	// fetch returned hash of the data
 	storedDataHash := string(body)
 	log.Infof("got response body, stored data hash %s", storedDataHash)
-
-	// calc hash over the data
-	sha256 := sha256.Sum256([]byte(document.Data))
-	dataHash := hex.EncodeToString(sha256[:])
 
 	// verify that the hash from the post request matches our data
 	if dataHash != storedDataHash {
