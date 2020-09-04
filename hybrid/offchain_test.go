@@ -96,7 +96,7 @@ func startRestServer(port int) {
 	time.Sleep(200 * time.Millisecond)
 }
 
-func printSignatureResponse(input map[string][]byte) {
+func printSignatureResponse(input map[string]string) {
 	for identity, signature := range input {
 		iddecoded, _ := base64.StdEncoding.DecodeString(identity)
 		fmt.Printf("identity: %s => signature: %s", iddecoded, signature)

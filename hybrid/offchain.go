@@ -137,7 +137,7 @@ func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentBase
 }
 
 // GetSignatures returns all signatures stored in the ledger for this key
-func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, key string) (map[string][]byte, error) {
+func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, key string) (map[string]string, error) {
 	// query results for composite key without identity
 	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(compositeKeyDefinition, []string{targetMSPID, "SIGNATURE", key})
 
@@ -151,7 +151,7 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 		return nil, fmt.Errorf("GetSignatures found no results")
 	}
 
-	results := make(map[string][]byte, 0)
+	results := make(map[string]string, 0)
 
 	for iterator.HasNext() {
 		item, err := iterator.Next()
@@ -168,8 +168,9 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 			return nil, err
 		}
 
-		log.Infof("state[%s] = %s", item.GetKey(), item.GetValue())
-		results[attributes[len(attributes)-1]] = item.GetValue()
+		attribute := attributes[len(attributes)-1]
+		log.Infof("state[%s] attr[%s] = %s", item.GetKey(), attribute, item.GetValue())
+		results[attribute] = string(item.GetValue())
 	}
 
 	return results, nil
