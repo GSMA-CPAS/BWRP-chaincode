@@ -161,7 +161,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org1 signs document:
 	// QUERY create storage key
-	storagekeyORG1, err := contractORG1.CreateStorageKey(documentBase64, ORG1.Name)
+	storagekeyORG1, err := contractORG1.CreateStorageKey(ORG1.Name, documentBase64)
 	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
@@ -175,7 +175,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org2 signs document:
 	// QUERY create storage key
-	storagekeyORG2, err := contractORG2.CreateStorageKey(documentBase64, ORG2.Name)
+	storagekeyORG2, err := contractORG2.CreateStorageKey(ORG2.Name, documentBase64)
 	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
@@ -189,7 +189,8 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### (optional) org1 checks signatures of org2 on document:
 	// QUERY create expected key
-	storagekeypartnerORG2, err := contractORG1.CreateStorageKey(documentBase64, ORG2.Name)
+	storagekeypartnerORG2, err := contractORG1.CreateStorageKey(ORG2.Name, documentBase64)
+	require.Equal(t, storagekeyORG2, storagekeypartnerORG2)
 	require.NoError(t, err)
 	// QUERY GetSignatures
 	signatures, err := contractORG1.GetSignatures(txContextORG1, ORG2.Name, storagekeypartnerORG2)
@@ -198,7 +199,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### (optional) org2 checks signatures of org1 on document:
 	// QUERY create expected key
-	storagekeypartnerORG1, err := contractORG2.CreateStorageKey(documentBase64, ORG1.Name)
+	storagekeypartnerORG1, err := contractORG2.CreateStorageKey(ORG1.Name, documentBase64)
 	require.NoError(t, err)
 	// QUERY GetSignatures
 	signatures, err = contractORG2.GetSignatures(txContextORG2, ORG1.Name, storagekeypartnerORG1)

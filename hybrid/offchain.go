@@ -125,7 +125,7 @@ func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
 }
 
 // CreateStorageKey returns the hidden key used for hidden communication
-func (s *RoamingSmartContract) CreateStorageKey(documentBase64 string, targetMSPID string) (string, error) {
+func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentBase64 string) (string, error) {
 	if len(documentBase64) == 0 {
 		return "", fmt.Errorf("invalid input: size of document is zero")
 	}
