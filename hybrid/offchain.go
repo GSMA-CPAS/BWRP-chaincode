@@ -36,7 +36,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const compositeKeyDefinition string = "owner~type~key~identity"
+const compositeKeyDefinition string = "owner~type~key~txid"
 
 // RESTDocument struct as passed to the rest interface
 type RESTDocument struct {
@@ -168,9 +168,9 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 			return nil, err
 		}
 
-		attribute := attributes[len(attributes)-1]
-		log.Infof("state[%s] attr[%s] = %s", item.GetKey(), attribute, item.GetValue())
-		results[attribute] = string(item.GetValue())
+		txID := attributes[len(attributes)-1]
+		log.Infof("state[%s] txID %s = %s", item.GetKey(), txID, item.GetValue())
+		results[txID] = string(item.GetValue())
 	}
 
 	return results, nil
@@ -180,14 +180,16 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 // a given storageType and key by using the composite key feature
 func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType string, key string) (string, error) {
 	// get the calling identity
-	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
+	invokingMSPID, _, err := getCallingIdenties(ctx)
 	if err != nil {
 		log.Errorf("failed to fetch calling identity: %s", err.Error())
 		return "", err
 	}
+	// get the txID
+	txID := ctx.GetStub().GetTxID()
 
 	// construct the storage location
-	storageLocation, err := ctx.GetStub().CreateCompositeKey(compositeKeyDefinition, []string{invokingMSPID, storageType, key, invokingUserID})
+	storageLocation, err := ctx.GetStub().CreateCompositeKey(compositeKeyDefinition, []string{invokingMSPID, storageType, key, txID})
 
 	if err != nil {
 		log.Errorf("failed to create composite key: %s", err.Error())

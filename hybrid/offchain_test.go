@@ -97,9 +97,8 @@ func startRestServer(port int) {
 }
 
 func printSignatureResponse(input map[string]string) {
-	for identity, signature := range input {
-		iddecoded, _ := base64.StdEncoding.DecodeString(identity)
-		fmt.Printf("identity: %s => signature: %s", iddecoded, signature)
+	for txID, signature := range input {
+		fmt.Printf("txID: %s => signature: %s", txID, signature)
 	}
 }
 

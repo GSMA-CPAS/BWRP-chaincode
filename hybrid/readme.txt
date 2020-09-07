@@ -1,3 +1,9 @@
+# changelog #
+- changed composite key structure
+ - as per recent discussion signing identity is NOT the hyperledger identity any more
+ - use txid as composite key in order to allow multiple updates
+- changed return type of GetSignatures as fabric-sdk-node seems to have problems with []byte return values
+- ...
 
 -- Prerequisites --
 
