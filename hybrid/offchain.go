@@ -202,28 +202,28 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 }
 
 // storeData stores given data with a given type on the ledger
-func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) (string, error) {
+func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
 	// fetch storage location where we will store the data
 	storageLocation, err := s.GetStorageLocation(ctx, dataType, key)
 	if err != nil {
 		log.Errorf("failed to fetch storageLocation: %s", err.Error())
-		return "", err
+		return err
 	}
 
 	// TODO:
 	// make sure storageLocation is unique and prevent signature deletion by checks in chaincode
 	log.Infof("will store data of type %s on ledger: state[%s] = 0x%s", dataType, storageLocation, hex.EncodeToString(data))
-	return ctx.GetStub().GetTxID(), ctx.GetStub().PutState(storageLocation, data)
+	return ctx.GetStub().PutState(storageLocation, data)
 }
 
 // StoreSignature stores a given signature on the ledger
-func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContextInterface, key string, signatureJSON string) (string, error) {
+func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContextInterface, key string, signatureJSON string) error {
 
 	/*TODO:
 	err := ctx.GetClientIdentity().AssertAttributeValue("signDocument", "yes")
 	if err != nil {
 		log.Error("identity is not allowed to sign")
-		return "", err
+		return err
 	}*/
 
 	return s.storeData(ctx, key, "SIGNATURE", []byte(signatureJSON))

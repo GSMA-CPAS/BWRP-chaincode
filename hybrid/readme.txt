@@ -1,5 +1,4 @@
 # changelog #
-- return value of storesignature now returns the txhash
 - changed composite key structure
  - as per recent discussion signing identity is NOT the hyperledger identity any more
  - use txid as composite key in order to allow multiple updates
