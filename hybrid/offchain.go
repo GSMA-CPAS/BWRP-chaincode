@@ -220,10 +220,23 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 		return err
 	}
 
-	// TODO:
-	// make sure storageLocation is unique and prevent signature deletion by checks in chaincode
+	// store data
 	log.Infof("will store data of type %s on ledger: state[%s] = 0x%s", dataType, storageLocation, hex.EncodeToString(data))
-	return ctx.GetStub().PutState(storageLocation, data)
+	err = ctx.GetStub().PutState(storageLocation, data)
+	if err != nil {
+		log.Errorf("failed to store data: %s", err.Error())
+		return err
+	}
+
+	// send event
+	err = ctx.GetStub().SetEvent("STORE:"+dataType, []byte(storageLocation))
+	if err != nil {
+		log.Errorf("failed to set event: %s", err.Error())
+		return err
+	}
+
+	// no error
+	return nil
 }
 
 // StoreSignature stores a given signature on the ledger
