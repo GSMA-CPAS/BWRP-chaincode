@@ -1,5 +1,6 @@
 # changelog #
-- added  CreateStorageKeyFromHash as the rest api needs to call it
+- added FetchPrivateDocument to allow the blockchain-adapter to query data
+- added CreateStorageKeyFromHash as the rest api needs to call it
 - changed composite key structure
  - as per recent discussion signing identity is NOT the hyperledger identity any more
  - use txid as composite key in order to allow multiple updates

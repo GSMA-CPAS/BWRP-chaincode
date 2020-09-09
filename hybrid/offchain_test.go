@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"hybrid/historyshimtest"
 	"hybrid/mocks"
 	"io/ioutil"
@@ -64,7 +63,9 @@ func prepareTransactionContext(stub *historyshimtest.MockStub, orgmsp string, ce
 	return transactionContext, nil
 }
 
-func showRestData(c echo.Context) error {
+var dummyDB = make(map[string]string)
+
+func storeData(c echo.Context) error {
 	body, _ := ioutil.ReadAll(c.Request().Body)
 	log.Infof("on %s got: %s", c.Echo().Server.Addr, string(body))
 
@@ -73,16 +74,40 @@ func showRestData(c echo.Context) error {
 
 	data := document["Data"].(string)
 	hash := sha256.Sum256([]byte(data))
+	hashs := hex.EncodeToString(hash[:])
+
+	//store data
+	log.Infof("DB[%s] = %s", hashs, string(body))
+	dummyDB[hashs] = string(body)
 
 	// return the hash in the same way as the offchain-db-adapter
-	return c.String(http.StatusOK, hex.EncodeToString(hash[:]))
+	return c.String(http.StatusOK, hashs)
+}
+
+func fetchData(c echo.Context) error {
+	// extract hash
+	hash := c.Param("hash")
+	if len(hash) != 64 {
+		return c.String(http.StatusInternalServerError, `{ "error": "invalid hash parameter. length mismatch `+string(len(hash))+`" }`)
+	}
+
+	// access dummy db
+	val, knownHash := dummyDB[hash]
+	if !knownHash {
+		log.Errorf("could not find hash " + hash + " in db")
+		return c.String(http.StatusInternalServerError, "hash not found")
+	}
+
+	// return the hash in the same way as the offchain-db-adapter
+	return c.String(http.StatusOK, val)
 }
 
 func startRestServer(port int) {
 	e := echo.New()
 
 	// define routes
-	e.POST("/documents", showRestData)
+	e.POST("/documents", storeData)
+	e.GET("/documents/:hash", fetchData)
 
 	// start server
 	url := ":" + strconv.Itoa(port)
@@ -98,7 +123,7 @@ func startRestServer(port int) {
 
 func printSignatureResponse(input map[string]string) {
 	for txID, signature := range input {
-		fmt.Printf("txID: %s => signature: %s", txID, signature)
+		log.Infof("txID: %s => signature: %s", txID, signature)
 	}
 }
 
@@ -131,7 +156,7 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set transient data for Org1
-	transient["uri"] = []byte("http://localhost:3001/documents")
+	transient["uri"] = []byte("http://localhost:3001")
 	mockStub.TransientMap = transient
 	err = contractORG1.SetRESTConfig(txContextORG1)
 	require.NoError(t, err)
@@ -141,18 +166,26 @@ func TestExchangeAndSigning(t *testing.T) {
 	// as getRESTConfig is not exported
 	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
 	uri, err := contractORG1.getRESTConfig(txContextORG1)
-	fmt.Printf("> read back uri <%s>\n", uri)
+	log.Infof("> read back uri <%s>\n", uri)
 	require.NoError(t, err)
 
 	// Set transient data for Org2
-	transient["uri"] = []byte("http://localhost:3002/documents")
+	transient["uri"] = []byte("http://localhost:3002")
 	mockStub.TransientMap = transient
 	err = contractORG2.SetRESTConfig(txContextORG2)
 	require.NoError(t, err)
 
 	// QUERY store document on ORG1 (local)
-	_, err = contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, documentBase64)
+	hash, err := contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, documentBase64)
 	require.NoError(t, err)
+
+	// VERIFY that it was written
+	data, err := contractORG1.FetchPrivateDocument(txContextORG1, hash)
+	require.NoError(t, err)
+	// TODO: check all attributes
+	var document map[string]interface{}
+	json.Unmarshal([]byte(data), &document)
+	require.EqualValues(t, document["Data"], documentBase64)
 
 	// QUERY store document on ORG2 (remote)
 	_, err = contractORG2.StorePrivateDocument(txContextORG1, ORG2.Name, documentBase64)

@@ -300,12 +300,14 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// fetch the configured rest endpoint
-	url, err := s.getRESTConfig(ctx)
+	baseURL, err := s.getRESTConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}
 
-	log.Infof("will send post request to %s", url)
+	// query url
+	url := baseURL + "/documents"
+	log.Infof("will send POST request to %s", url)
 
 	response, err := http.Post(url, "application/json", bytes.NewBuffer(documentJSON))
 
@@ -337,4 +339,53 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	return storedDataHash, nil
+}
+
+// FetchPrivateDocument will return a private document identified by its hash
+// only use this on local queries
+func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, hash string) (string, error) {
+	log.Infof("fetching document with #" + hash)
+	// get the calling identity
+	invokingMSPID, _, err := getCallingIdenties(ctx)
+	if err != nil {
+		log.Errorf("failed to fetch MSPID: %s", err.Error())
+		return "", err
+	}
+
+	// verify that this is a local call
+	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
+		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
+		return "", fmt.Errorf("access denied")
+	}
+
+	// fetch the configured rest endpoint
+	baseURL, err := s.getRESTConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
+	}
+
+	url := baseURL + "/documents/" + hash
+	log.Infof("will send GET request to %s", url)
+
+	response, err := http.Get(url)
+
+	if err != nil {
+		log.Errorf("REST request failed. Error: %s", err.Error())
+		return "", err
+	}
+
+	log.Infof("got response status %s", response.Status)
+	if response.StatusCode != 200 {
+		log.Errorf("REST request on %s failed. Status: %s", url, response.Status)
+		return "", fmt.Errorf("REST request on %s failed. Status: %s", url, response.Status)
+	}
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Errorf("failed to decode body (status = %s, header = %s)", response.Status, response.Header)
+		return "", err
+	}
+
+	// return result
+	return string(body), nil
 }
