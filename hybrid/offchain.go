@@ -121,7 +121,7 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"CreateStorageKey", "CreateStorageKeyFromHash", "GetSignatures", "GetStorageLocation", "StorePrivateDocument"}
+	return []string{"CreateStorageKey", "CreateStorageKeyFromHash", "GetSignatures", "GetStorageLocation", "StorePrivateDocument", "FetchPrivateDocument"}
 }
 
 // CreateStorageKey returns the hidden key used for hidden communication based on a document
