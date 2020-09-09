@@ -228,8 +228,8 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 		return err
 	}
 
-	// send event
-	err = ctx.GetStub().SetEvent("STORE:"+dataType, []byte(storageLocation))
+	// send event notification
+	err = ctx.GetStub().SetEvent("STORE:"+dataType, []byte(key))
 	if err != nil {
 		log.Errorf("failed to set event: %s", err.Error())
 		return err
