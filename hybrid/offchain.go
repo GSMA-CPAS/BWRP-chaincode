@@ -137,7 +137,7 @@ func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentBase
 // CreateStorageKeyFromHash returns the hidden key used for hidden communication based on a document hash
 func (s *RoamingSmartContract) CreateStorageKeyFromHash(targetMSPID string, documentHash string) (string, error) {
 	if len(documentHash) != 64 {
-		return "", fmt.Errorf("invalid input: size of document hash is invalid: %d != 32", len(documentHash))
+		return "", fmt.Errorf("invalid input: size of document hash is invalid: %d != 64", len(documentHash))
 	}
 	if len(targetMSPID) == 0 {
 		return "", fmt.Errorf("invalid input: targetMSPID is empty")
