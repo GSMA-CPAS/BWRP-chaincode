@@ -376,8 +376,10 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 
 	log.Infof("got response status %s", response.Status)
 	if response.StatusCode != 200 {
-		log.Errorf("REST request on %s failed. Status: %s", url, response.Status)
-		return "", fmt.Errorf("REST request on %s failed. Status: %s", url, response.Status)
+		log.Errorf("REST request on %s failed. Status: %s, Body = %s", url, response.Status, response.Body)
+		// NOTE: returning detailled error messages here is safe as this function
+		//       is only called locally (see check above). DO NOT expose sensitive information in other calls.
+		return "", fmt.Errorf("REST request on %s failed: Status = %s, Body = %s", url, response.Status, response.Body)
 	}
 
 	body, err := ioutil.ReadAll(response.Body)
