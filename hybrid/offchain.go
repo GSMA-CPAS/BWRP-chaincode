@@ -40,11 +40,11 @@ const compositeKeyDefinition string = "owner~type~key~txid"
 
 // RESTDocument struct as passed to the rest interface
 type RESTDocument struct {
-	FromMSP  string `json:"FromMSP"`
-	ToMSP    string `json:"ToMSP"`
-	SenderID string `json:"SenderID"`
-	Data     string `json:"Data"`
-	DataHash string `json:"DataHash"`
+	FromMSP  string `json:"fromMSP"`
+	ToMSP    string `json:"toMSP"`
+	SenderID string `json:"senderID"`
+	Data     string `json:"data"`
+	DataHash string `json:"dataHash"`
 }
 
 func main() {
