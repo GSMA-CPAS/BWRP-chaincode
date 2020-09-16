@@ -9,7 +9,16 @@
 - changed return type of GetSignatures as fabric-sdk-node seems to have problems with []byte return values
 - ...
 
--- Prerequisites --
+
+# notes #
+- why 32 byte docID instead of sha256(doc)?
+  - as gal pointed out, template based documents migth allow bruteforce attacks
+  - even worse, as martin pointed out, a sucessfully guessed document reveals the full contract details
+- why no uuid4 instead of 32 byte docID?
+  - uuid4 is 2^128, docID is 2^256
+  - RFC4122: "...Do not assume that UUIDs are hard to guess; they should not be used as security capabilities..."
+
+# prerequisites #
 
 counterfeiter is installed, if not:
 GO111MODULE=off go get -u github.com/maxbrunsfeld/counterfeiter
