@@ -1,4 +1,6 @@
 # changelog #
+- switch to document id as identifier and secret for the hidden communication key
+- CreateStorageKey is now based on documentID, dropped CreateStorageKeyFromHash
 - added FetchPrivateDocument to allow the blockchain-adapter to query data
 - added CreateStorageKeyFromHash as the rest api needs to call it
 - changed composite key structure

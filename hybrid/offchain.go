@@ -24,6 +24,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -31,6 +32,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
@@ -40,18 +43,13 @@ const compositeKeyDefinition string = "owner~type~key~txid"
 
 // RESTDocument struct as passed to the rest interface
 type RESTDocument struct {
-	FromMSP  string `json:"fromMSP"`
-	ToMSP    string `json:"toMSP"`
-	SenderID string `json:"senderID"`
-	Data     string `json:"data"`
-	DataHash string `json:"dataHash"`
-	Nonce    string `json:"nonce"`
-}
-
-// DataPayload struct as passed to the rest interface
-type DataPayload struct {
-	Nonce string `json:"nonce"`
-	Data  string `json:"data"`
+	FromMSP   string `json:"fromMSP"`
+	ToMSP     string `json:"toMSP"`
+	SenderID  string `json:"senderID"`
+	Data      string `json:"data"`
+	DataHash  string `json:"dataHash"`
+	TimeStamp string `json:"timeStamp"`
+	ID        string `json:"id"`
 }
 
 func main() {
@@ -128,21 +126,55 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"CreateStorageKeyFromHash", "GetSignatures", "GetStorageLocation", "StorePrivateDocument", "FetchPrivateDocument"}
+	return []string{"CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StorePrivateDocument", "FetchPrivateDocument"}
 }
 
-// CreateStorageKeyFromHash returns the hidden key used for hidden communication based on a nonce and a document hash
-func (s *RoamingSmartContract) CreateStorageKeyFromHash(targetMSPID string, nonce string, documentHash string) (string, error) {
-	if len(nonce) != 64 {
-		return "", fmt.Errorf("invalid input: size of nonce is invalid: %d != 64", len(nonce))
+// CreateDocumentID creates a DocumentID and verifies that is has not been used yet
+func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionContextInterface) (string, error) {
+	// TODO: verify that the golang crypto lib returns random numbers that are good enough to be used here!
+	rand32 := make([]byte, 32)
+	_, err := rand.Read(rand32)
+	if err != nil {
+		log.Errorf("failed to generate documentID: %s", err.Error())
+		return "", err
 	}
-	if len(documentHash) != 64 {
-		return "", fmt.Errorf("invalid input: size of document hash is invalid: %d != 64", len(documentHash))
+
+	// encode random numbers to hex string
+	documentID := hex.EncodeToString(rand32)
+
+	// get the calling identity
+	invokingMSPID, _, err := getCallingIdenties(ctx)
+	if err != nil {
+		log.Errorf("failed to fetch calling identity: %s", err.Error())
+		return "", err
+	}
+
+	// make sure that there is no such document id for this MSP on the ledger yet:
+	storageKey, err := s.CreateStorageKey(invokingMSPID, documentID)
+	data, err := ctx.GetStub().GetState(storageKey)
+	if err != nil {
+		log.Errorf("failed to get ledger state: %s", err.Error())
+		return "", err
+	}
+
+	if data != nil {
+		log.Errorf("data for this documentID already exists.")
+		return "", fmt.Errorf("data for this documentID already exists")
+	}
+
+	// fine, data does not exist on ledger -> the calulated documentID is ok
+	return documentID, nil
+}
+
+// CreateStorageKey returns the hidden key used for hidden communication based on a documentID and the targetMSP
+func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentID string) (string, error) {
+	if len(documentID) != 64 {
+		return "", fmt.Errorf("invalid input: size of documentID is invalid: %d != 64", len(documentID))
 	}
 	if len(targetMSPID) == 0 {
 		return "", fmt.Errorf("invalid input: targetMSPID is empty")
 	}
-	hash := sha256.Sum256([]byte(targetMSPID + nonce + documentHash))
+	hash := sha256.Sum256([]byte(targetMSPID + documentID))
 	return hex.EncodeToString(hash[:]), nil
 }
 
@@ -274,10 +306,10 @@ func getCallingIdenties(ctx contractapi.TransactionContextInterface) (string, st
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
 // payload is a DataPayload object that contains a nonce and the payload
-func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, payload DataPayload) (string, error) {
+func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, documentID string, documentBase64 string) (string, error) {
 	// verify passed data
-	if len(payload.Nonce) != 64 {
-		return "", fmt.Errorf("invalid input: size of nonce is invalid: %d != 64", len(payload.Nonce))
+	if len(documentID) != 64 {
+		return "", fmt.Errorf("invalid input: size of documentID is invalid: %d != 64", len(documentID))
 	}
 
 	// get the calling identity
@@ -288,17 +320,18 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// calc hash over the data
-	sha256 := sha256.Sum256([]byte(payload.Data))
+	sha256 := sha256.Sum256([]byte(documentBase64))
 	dataHash := hex.EncodeToString(sha256[:])
 
 	// create rest struct
 	var document RESTDocument
+	document.ID = documentID
+	document.TimeStamp = strconv.FormatInt(time.Now().UnixNano(), 10)
+	document.Data = documentBase64
+	document.DataHash = dataHash
 	document.FromMSP = invokingMSPID
 	document.SenderID = invokingUserID
 	document.ToMSP = targetMSPID
-	document.Data = payload.Data
-	document.Nonce = payload.Nonce
-	document.DataHash = dataHash
 	documentJSON, err := json.Marshal(document)
 
 	if err != nil {
@@ -312,11 +345,20 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}
 
-	// query url
-	url := baseURL + "/documents"
-	log.Infof("will send POST request to %s", url)
+	// offchain-db-adapter target url
+	url := baseURL + "/documents/" + documentID
+	log.Infof("will send PUT request to %s", url)
 
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(documentJSON))
+	client := &http.Client{}
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(documentJSON))
+	if err != nil {
+		log.Errorf("REST request failed to create request. Error: %s", err.Error())
+		return "", err
+	}
+
+	// set the request header Content-Type for json
+	req.Header.Set("Content-Type", "application/json")
+	response, err := client.Do(req)
 
 	if err != nil {
 		log.Errorf("REST request failed. Error: %s", err.Error())
@@ -348,10 +390,10 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	return storedDataHash, nil
 }
 
-// FetchPrivateDocument will return a private document identified by its hash
+// FetchPrivateDocument will return a private document identified by its documentID
 // only use this on local queries
-func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, hash string) (string, error) {
-	log.Infof("fetching document with #" + hash)
+func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) (string, error) {
+	log.Infof("fetching document with id " + documentID)
 	// get the calling identity
 	invokingMSPID, _, err := getCallingIdenties(ctx)
 	if err != nil {
@@ -371,7 +413,8 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}
 
-	url := baseURL + "/documents/" + hash
+	// offchain-db-adapter target url
+	url := baseURL + "/documents/" + documentID
 	log.Infof("will send GET request to %s", url)
 
 	response, err := http.Get(url)
