@@ -45,6 +45,13 @@ type RESTDocument struct {
 	SenderID string `json:"senderID"`
 	Data     string `json:"data"`
 	DataHash string `json:"dataHash"`
+	Nonce    string `json:"nonce"`
+}
+
+// DataPayload struct as passed to the rest interface
+type DataPayload struct {
+	Nonce string `json:"nonce"`
+	Data  string `json:"data"`
 }
 
 func main() {
@@ -121,28 +128,21 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"CreateStorageKey", "CreateStorageKeyFromHash", "GetSignatures", "GetStorageLocation", "StorePrivateDocument", "FetchPrivateDocument"}
+	return []string{"CreateStorageKeyFromHash", "GetSignatures", "GetStorageLocation", "StorePrivateDocument", "FetchPrivateDocument"}
 }
 
-// CreateStorageKey returns the hidden key used for hidden communication based on a document
-func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentBase64 string) (string, error) {
-	if len(documentBase64) == 0 {
-		return "", fmt.Errorf("invalid input: size of document is zero")
+// CreateStorageKeyFromHash returns the hidden key used for hidden communication based on a nonce and a document hash
+func (s *RoamingSmartContract) CreateStorageKeyFromHash(targetMSPID string, nonce string, documentHash string) (string, error) {
+	if len(nonce) != 64 {
+		return "", fmt.Errorf("invalid input: size of nonce is invalid: %d != 64", len(nonce))
 	}
-	documentHash := sha256.Sum256([]byte(documentBase64))
-
-	return s.CreateStorageKeyFromHash(targetMSPID, hex.EncodeToString(documentHash[:]))
-}
-
-// CreateStorageKeyFromHash returns the hidden key used for hidden communication based on a document hash
-func (s *RoamingSmartContract) CreateStorageKeyFromHash(targetMSPID string, documentHash string) (string, error) {
 	if len(documentHash) != 64 {
 		return "", fmt.Errorf("invalid input: size of document hash is invalid: %d != 64", len(documentHash))
 	}
 	if len(targetMSPID) == 0 {
 		return "", fmt.Errorf("invalid input: targetMSPID is empty")
 	}
-	hash := sha256.Sum256(append([]byte(targetMSPID), documentHash...))
+	hash := sha256.Sum256([]byte(targetMSPID + nonce + documentHash))
 	return hex.EncodeToString(hash[:]), nil
 }
 
@@ -273,7 +273,13 @@ func getCallingIdenties(ctx contractapi.TransactionContextInterface) (string, st
 
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
-func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, payloadBase64 string) (string, error) {
+// payload is a DataPayload object that contains a nonce and the payload
+func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, payload DataPayload) (string, error) {
+	// verify passed data
+	if len(payload.Nonce) != 64 {
+		return "", fmt.Errorf("invalid input: size of nonce is invalid: %d != 64", len(payload.Nonce))
+	}
+
 	// get the calling identity
 	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
 	if err != nil {
@@ -282,7 +288,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// calc hash over the data
-	sha256 := sha256.Sum256([]byte(payloadBase64))
+	sha256 := sha256.Sum256([]byte(payload.Data))
 	dataHash := hex.EncodeToString(sha256[:])
 
 	// create rest struct
@@ -290,7 +296,8 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	document.FromMSP = invokingMSPID
 	document.SenderID = invokingUserID
 	document.ToMSP = targetMSPID
-	document.Data = payloadBase64
+	document.Data = payload.Data
+	document.Nonce = payload.Nonce
 	document.DataHash = dataHash
 	documentJSON, err := json.Marshal(document)
 

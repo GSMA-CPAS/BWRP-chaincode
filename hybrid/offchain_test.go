@@ -3,6 +3,7 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -72,7 +73,7 @@ func storeData(c echo.Context) error {
 	var document map[string]interface{}
 	json.Unmarshal(body, &document)
 
-	data := document["Data"].(string)
+	data := document["data"].(string)
 	hash := sha256.Sum256([]byte(data))
 	hashs := hex.EncodeToString(hash[:])
 
@@ -141,7 +142,17 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### Org1 creates a document and sends it to Org2:
 	// a test document:
-	documentBase64 := base64.StdEncoding.EncodeToString([]byte(`data!1234...`))
+	var dataPayload DataPayload
+	dataPayload.Data = base64.StdEncoding.EncodeToString([]byte(`data!1234...`))
+	// calc random nonce
+	nonce := make([]byte, 32)
+	_, err := rand.Read(nonce)
+	require.NoError(t, err)
+	dataPayload.Nonce = hex.EncodeToString(nonce)
+
+	// calc data hash
+	tmp := sha256.Sum256([]byte(dataPayload.Data))
+	dataHash := hex.EncodeToString(tmp[:])
 
 	// Prepare transient data map
 	var transient map[string][]byte
@@ -176,7 +187,7 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 
 	// QUERY store document on ORG1 (local)
-	hash, err := contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, documentBase64)
+	hash, err := contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, dataPayload)
 	require.NoError(t, err)
 
 	// VERIFY that it was written
@@ -185,15 +196,16 @@ func TestExchangeAndSigning(t *testing.T) {
 	// TODO: check all attributes
 	var document map[string]interface{}
 	json.Unmarshal([]byte(data), &document)
-	require.EqualValues(t, document["Data"], documentBase64)
+	require.EqualValues(t, document["data"], dataPayload.Data)
+	require.EqualValues(t, document["nonce"], dataPayload.Nonce)
 
 	// QUERY store document on ORG2 (remote)
-	_, err = contractORG2.StorePrivateDocument(txContextORG1, ORG2.Name, documentBase64)
+	_, err = contractORG2.StorePrivateDocument(txContextORG1, ORG2.Name, dataPayload)
 	require.NoError(t, err)
 
 	// ### org1 signs document:
 	// QUERY create storage key
-	storagekeyORG1, err := contractORG1.CreateStorageKey(ORG1.Name, documentBase64)
+	storagekeyORG1, err := contractORG1.CreateStorageKeyFromHash(ORG1.Name, dataPayload.Nonce, dataHash)
 	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
@@ -207,7 +219,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org2 signs document:
 	// QUERY create storage key
-	storagekeyORG2, err := contractORG2.CreateStorageKey(ORG2.Name, documentBase64)
+	storagekeyORG2, err := contractORG2.CreateStorageKeyFromHash(ORG2.Name, dataPayload.Nonce, dataHash)
 	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
@@ -221,7 +233,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### (optional) org1 checks signatures of org2 on document:
 	// QUERY create expected key
-	storagekeypartnerORG2, err := contractORG1.CreateStorageKey(ORG2.Name, documentBase64)
+	storagekeypartnerORG2, err := contractORG1.CreateStorageKeyFromHash(ORG2.Name, dataPayload.Nonce, dataHash)
 	require.Equal(t, storagekeyORG2, storagekeypartnerORG2)
 	require.NoError(t, err)
 	// QUERY GetSignatures
@@ -231,7 +243,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### (optional) org2 checks signatures of org1 on document:
 	// QUERY create expected key
-	storagekeypartnerORG1, err := contractORG2.CreateStorageKey(ORG1.Name, documentBase64)
+	storagekeypartnerORG1, err := contractORG2.CreateStorageKeyFromHash(ORG1.Name, dataPayload.Nonce, dataHash)
 	require.NoError(t, err)
 	// QUERY GetSignatures
 	signatures, err = contractORG2.GetSignatures(txContextORG2, ORG1.Name, storagekeypartnerORG1)
