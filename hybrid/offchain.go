@@ -10,9 +10,9 @@
 	A short note on the composite key feature
 	 * for documentation see https://github.com/hyperledger/fabric-chaincode-go/blob/master/shim/interfaces.go
 	 * example:
-	   - let objectType = "owner~type~key~identity"
+	   - let objectType = "owner~type~key~txid"
 	   - key = CreateCompositeKey(objectType, []string{ "ORG1", "SIGNATURE", "12345", "user1"})
-	   - the resulting key result will be "\x00owner~type~key~identity\x00ORG1\x00SIGNATURE\x0012345\x00user1\x00"
+	   - the resulting key result will be "\x00owner~type~key~txid\x00ORG1\x00SIGNATURE\x0012345\x00abcdef\x00"
 
 
 	documentation links:
@@ -45,7 +45,6 @@ const compositeKeyDefinition string = "owner~type~key~txid"
 type RESTDocument struct {
 	FromMSP   string `json:"fromMSP"`
 	ToMSP     string `json:"toMSP"`
-	SenderID  string `json:"senderID"`
 	Data      string `json:"data"`
 	DataHash  string `json:"dataHash"`
 	TimeStamp string `json:"timeStamp"`
@@ -142,10 +141,10 @@ func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionConte
 	// encode random numbers to hex string
 	documentID := hex.EncodeToString(rand32)
 
-	// get the calling identity
-	invokingMSPID, _, err := getCallingIdenties(ctx)
+	// get the calling MSP
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		log.Errorf("failed to fetch calling identity: %s", err.Error())
+		log.Errorf("failed to fetch calling MSPID: %s", err.Error())
 		return "", err
 	}
 
@@ -221,10 +220,10 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 // GetStorageLocation returns the storage location for
 // a given storageType and key by using the composite key feature
 func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType string, key string) (string, error) {
-	// get the calling identity
-	invokingMSPID, _, err := getCallingIdenties(ctx)
+	// get the calling MSP
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		log.Errorf("failed to fetch calling identity: %s", err.Error())
+		log.Errorf("failed to fetch calling MSPID: %s", err.Error())
 		return "", err
 	}
 	// get the txID
@@ -284,25 +283,6 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	return s.storeData(ctx, key, "SIGNATURE", []byte(signatureJSON))
 }
 
-// getCallingIdenties returns the caller MSPID and userID
-func getCallingIdenties(ctx contractapi.TransactionContextInterface) (string, string, error) {
-	// fetch calling MSP ID
-	mspID, err := ctx.GetClientIdentity().GetMSPID()
-	if err != nil {
-		log.Errorf("failed to get calling identity: %s", err.Error())
-		return "", "", err
-	}
-
-	userID, err := ctx.GetClientIdentity().GetID()
-	if err != nil {
-		log.Errorf("failed to get calling user ID: %s", err.Error())
-		return "", "", err
-	}
-
-	log.Infof("got IDs for MSP=%s and user=%s", mspID, userID)
-	return mspID, userID, nil
-}
-
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
 // payload is a DataPayload object that contains a nonce and the payload
@@ -312,8 +292,8 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 		return "", fmt.Errorf("invalid input: size of documentID is invalid: %d != 64", len(documentID))
 	}
 
-	// get the calling identity
-	invokingMSPID, invokingUserID, err := getCallingIdenties(ctx)
+	// get the calling MSP
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
 		log.Errorf("failed to fetch MSPID: %s", err.Error())
 		return "", err
@@ -330,7 +310,6 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	document.Data = documentBase64
 	document.DataHash = dataHash
 	document.FromMSP = invokingMSPID
-	document.SenderID = invokingUserID
 	document.ToMSP = targetMSPID
 	documentJSON, err := json.Marshal(document)
 
@@ -394,8 +373,9 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 // only use this on local queries
 func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) (string, error) {
 	log.Infof("fetching document with id " + documentID)
-	// get the calling identity
-	invokingMSPID, _, err := getCallingIdenties(ctx)
+
+	// get the calling MSP
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
 		log.Errorf("failed to fetch MSPID: %s", err.Error())
 		return "", err
