@@ -51,6 +51,14 @@ type RESTDocument struct {
 	ID        string `json:"id"`
 }
 
+// EventData struct as used on events
+type EventData struct {
+	MSP        string `json:"msp"`
+	EventName  string `json:"eventName"`
+	Timestamp  string `json:"timestamp"`
+	StorageKey string `json:"storageKey"`
+}
+
 func main() {
 	// set loglevel
 	log.SetLevel(log.DebugLevel)
@@ -245,6 +253,13 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 
 // storeData stores given data with a given type on the ledger
 func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
+	// get the calling MSP
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		log.Errorf("failed to fetch calling MSPID: %s", err.Error())
+		return err
+	}
+
 	// fetch storage location where we will store the data
 	storageLocation, err := s.GetStorageLocation(ctx, dataType, key)
 	if err != nil {
@@ -260,8 +275,27 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 		return err
 	}
 
+	// fetch tx creation time
+	txTimestamp, err := ctx.GetStub().GetTxTimestamp()
+	if err != nil {
+		log.Errorf("failed to fetch tx creation timestamp: %s", err.Error())
+		return err
+	}
+
+	// build event object
+	eventName := "STORE:" + dataType
+	timestampString := time.Unix(txTimestamp.Seconds, int64(txTimestamp.Nanos)).Format(time.RFC3339)
+	eventData := EventData{MSP: invokingMSPID, EventName: eventName, Timestamp: timestampString, StorageKey: key}
+
 	// send event notification
-	err = ctx.GetStub().SetEvent("STORE:"+dataType, []byte(key))
+	eventDataAsBytes, err := json.Marshal(eventData)
+	if err != nil {
+		log.Errorf("failed to set marshal eventData: %s", err.Error())
+		return err
+	}
+
+	log.Infof("sending event %s: %s", eventName, string(eventDataAsBytes))
+	err = ctx.GetStub().SetEvent(eventName, eventDataAsBytes)
 	if err != nil {
 		log.Errorf("failed to set event: %s", err.Error())
 		return err
