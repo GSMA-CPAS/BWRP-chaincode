@@ -53,10 +53,10 @@ type RESTDocument struct {
 
 // EventData struct as used on events
 type EventData struct {
-	MSP        string `json:"msp"`
-	EventName  string `json:"eventName"`
-	Timestamp  string `json:"timestamp"`
-	StorageKey string `json:"storageKey"`
+	MSP       string `json:"msp"`
+	EventName string `json:"eventName"`
+	Timestamp string `json:"timestamp"`
+	Data      string `json:"data"`
 }
 
 func main() {
@@ -285,7 +285,7 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 	// build event object
 	eventName := "STORE:" + dataType
 	timestampString := time.Unix(txTimestamp.Seconds, int64(txTimestamp.Nanos)).Format(time.RFC3339)
-	eventData := EventData{MSP: invokingMSPID, EventName: eventName, Timestamp: timestampString, StorageKey: key}
+	eventData := EventData{MSP: invokingMSPID, EventName: eventName, Timestamp: timestampString, Data: key}
 
 	// send event notification
 	eventDataAsBytes, err := json.Marshal(eventData)
