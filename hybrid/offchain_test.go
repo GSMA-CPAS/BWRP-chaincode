@@ -208,10 +208,19 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, hash, dataHash)
 
-	// ### org1 signs document:
 	// QUERY create storage key
 	storagekeyORG1, err := contractORG1.CreateStorageKey(ORG1.Name, documentID)
 	require.NoError(t, err)
+
+	// start tx
+	mockStub.MockTransactionStart("tx0")
+	// upload document hash on the ledger
+	err = contractORG1.StoreDocumentHash(txContextORG1, storagekeyORG1, dataHash)
+	require.NoError(t, err)
+	// execute tx
+	mockStub.MockTransactionEnd("tx0")
+
+	// ### org1 signs document:
 	// create signature (later provided by external API/client)
 	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
 	// start tx

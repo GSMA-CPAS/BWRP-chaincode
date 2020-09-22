@@ -1,4 +1,6 @@
 # changelog #
+- added StoreDocumentHash(): this will store a document hash on the ledger and sends an STORE:DOCUMENTHASH event
+  this can be used as an additional proof by ORG2 in order to verify that ORG1 is the author of the document
 - switch to document id as identifier and secret for the hidden communication key
 - CreateStorageKey is now based on documentID, dropped CreateStorageKeyFromHash
 - added FetchPrivateDocument to allow the blockchain-adapter to query data

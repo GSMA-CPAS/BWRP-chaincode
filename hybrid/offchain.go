@@ -125,7 +125,7 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StorePrivateDocument", "FetchPrivateDocument"}
+	return []string{"CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument"}
 }
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
@@ -226,6 +226,7 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 		log.Errorf("failed to fetch calling MSPID: %s", err.Error())
 		return "", err
 	}
+
 	// get the txID
 	txID := ctx.GetStub().GetTxID()
 
@@ -272,15 +273,12 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 
 // StoreSignature stores a given signature on the ledger
 func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContextInterface, key string, signatureJSON string) error {
-
-	/*TODO:
-	err := ctx.GetClientIdentity().AssertAttributeValue("signDocument", "yes")
-	if err != nil {
-		log.Error("identity is not allowed to sign")
-		return err
-	}*/
-
 	return s.storeData(ctx, key, "SIGNATURE", []byte(signatureJSON))
+}
+
+// StoreDocumentHash stores a given document hash on the ledger
+func (s *RoamingSmartContract) StoreDocumentHash(ctx contractapi.TransactionContextInterface, key string, documentHash string) error {
+	return s.storeData(ctx, key, "DOCUMENTHASH", []byte(documentHash))
 }
 
 // StorePrivateDocument will store contract Data locally
