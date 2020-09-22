@@ -51,14 +51,6 @@ type RESTDocument struct {
 	ID        string `json:"id"`
 }
 
-// EventData struct as used on events
-type EventData struct {
-	MSP       string `json:"msp"`
-	EventName string `json:"eventName"`
-	Timestamp string `json:"timestamp"`
-	Data      string `json:"data"`
-}
-
 func main() {
 	// set loglevel
 	log.SetLevel(log.DebugLevel)
@@ -285,18 +277,16 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 	// build event object
 	eventName := "STORE:" + dataType
 	timestampString := time.Unix(txTimestamp.Seconds, int64(txTimestamp.Nanos)).Format(time.RFC3339)
-	payload := `{ "storageKey" : "` + key + `" }`
-	eventData := EventData{MSP: invokingMSPID, EventName: eventName, Timestamp: timestampString, Data: payload}
 
-	// send event notification
-	eventDataAsBytes, err := json.Marshal(eventData)
-	if err != nil {
-		log.Errorf("failed to set marshal eventData: %s", err.Error())
-		return err
-	}
+	payload := `{ ` +
+		`"msp" : "` + invokingMSPID + `", ` +
+		`"eventName" : "` + eventName + `", ` +
+		`"timestamp" : "` + timestampString + `", ` +
+		`"data" : { "storageKey" : "` + key + `" }` +
+		` }`
 
-	log.Infof("sending event %s: %s", eventName, string(eventDataAsBytes))
-	err = ctx.GetStub().SetEvent(eventName, eventDataAsBytes)
+	log.Infof("sending event %s: %s", eventName, payload)
+	err = ctx.GetStub().SetEvent(eventName, []byte(payload))
 	if err != nil {
 		log.Errorf("failed to set event: %s", err.Error())
 		return err
