@@ -108,12 +108,42 @@ func fetchData(c echo.Context) error {
 	return c.String(http.StatusOK, val)
 }
 
+func fetchDocumentID(c echo.Context) error {
+	// extract id
+	storageKey := c.Param("storageKey")
+	if len(storageKey) != 64 {
+		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(storageKey))+`" }`)
+	}
+
+	// access dummy db
+	// loop through all (inefficient but good enough for this test)
+	for id, data := range dummyDB {
+		var document map[string]interface{}
+		json.Unmarshal([]byte(data), &document)
+
+		// calc hash of from storageKey
+		tmp := sha256.Sum256([]byte(document["fromMSP"].(string) + id))
+		if hex.EncodeToString(tmp[:]) == storageKey {
+			return c.String(http.StatusOK, `{ "documentID": "`+id+`" }`)
+		}
+		// calc hash of to storageKey
+		tmp = sha256.Sum256([]byte(document["fromMSP"].(string) + id))
+		if hex.EncodeToString(tmp[:]) == storageKey {
+			return c.String(http.StatusOK, `{ "documentID": "`+id+`" }`)
+		}
+	}
+
+	log.Errorf("could not find storageKey " + storageKey + " in db")
+	return c.String(http.StatusInternalServerError, "id not found")
+}
+
 func startRestServer(port int) {
 	e := echo.New()
 
 	// define routes
 	e.PUT("/documents/:id", storeData)
 	e.GET("/documents/:id", fetchData)
+	e.GET("/documentIDs/:storageKey", fetchDocumentID)
 
 	// start server
 	url := ":" + strconv.Itoa(port)
@@ -263,5 +293,72 @@ func TestExchangeAndSigning(t *testing.T) {
 	signatures, err = contractORG2.GetSignatures(txContextORG2, ORG1.Name, storagekeypartnerORG1)
 	require.NoError(t, err)
 	printSignatureResponse(signatures)
+
+}
+
+// Test GetDocumentID storagekeyORG1
+func TestGetDocumentID(t *testing.T) {
+	//start two simple rest servers to handle requests from chaincode
+	startRestServer(3001) //ORG1
+
+	// init contracts
+	contractORG1 := RoamingSmartContract{}
+
+	// create internal state map
+	mockStub := historyshimtest.NewMockStub("roamingState", nil)
+
+	// ### Org1 creates a document and sends it to Org2:
+	// a test document:
+	documentBase64 := base64.StdEncoding.EncodeToString([]byte(`data!1234...`))
+
+	// calc data hash
+	tmp := sha256.Sum256([]byte(documentBase64))
+	dataHash := hex.EncodeToString(tmp[:])
+
+	// Prepare transient data map
+	var transient map[string][]byte
+	transient = make(map[string][]byte)
+
+	// ORG1 as "sender"
+	txContextORG1, err := prepareTransactionContext(mockStub, ORG1.Name, ORG1.Certificate)
+	require.NoError(t, err)
+
+	// Set transient data for Org1
+	transient["uri"] = []byte("http://localhost:3001")
+	mockStub.TransientMap = transient
+	err = contractORG1.SetRESTConfig(txContextORG1)
+	require.NoError(t, err)
+
+	// read back for debugging
+	// note that this is not allowed on chaincode calls
+	// as getRESTConfig is not exported
+	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
+	uri, err := contractORG1.getRESTConfig(txContextORG1)
+	log.Infof("read back uri <%s>\n", uri)
+	require.NoError(t, err)
+
+	// calc documentID
+	documentID, err := contractORG1.CreateDocumentID(txContextORG1)
+	require.NoError(t, err)
+	log.Infof("got docID <%s>\n", documentID)
+
+	// QUERY store document on ORG1 (local)
+	hash, err := contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, documentID, documentBase64)
+	require.NoError(t, err)
+	require.EqualValues(t, hash, dataHash)
+
+	// QUERY create storage key
+	storagekeyORG1, err := contractORG1.CreateStorageKey(ORG1.Name, documentID)
+	require.NoError(t, err)
+
+	// ### (optional) org2 checks signatures of org1 on document:
+	// QUERY create expected key
+	response, err := contractORG1.GetDocumentID(txContextORG1, storagekeyORG1)
+	require.NoError(t, err)
+	var responseJSON map[string]interface{}
+	log.Infof(response)
+	err = json.Unmarshal([]byte(response), &responseJSON)
+	require.NoError(t, err)
+	require.EqualValues(t, responseJSON["documentID"].(string), documentID)
 
 }

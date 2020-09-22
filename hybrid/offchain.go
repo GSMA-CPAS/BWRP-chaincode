@@ -453,3 +453,57 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	// return result
 	return string(body), nil
 }
+
+// GetDocumentID will return a private documentID based on a storageKey
+// This only works for documentIDs known to this MSP
+// only use this on local queries
+func (s *RoamingSmartContract) GetDocumentID(ctx contractapi.TransactionContextInterface, storageKey string) (string, error) {
+	log.Infof("fetching documentID for storageKey " + storageKey)
+
+	// get the calling MSP
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		log.Errorf("failed to fetch MSPID: %s", err.Error())
+		return "", err
+	}
+
+	// verify that this is a local call
+	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
+		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
+		return "", fmt.Errorf("access denied")
+	}
+
+	// fetch the configured rest endpoint
+	baseURL, err := s.getRESTConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
+	}
+
+	// offchain-db-adapter target url
+	url := baseURL + "/documentIDs/" + storageKey
+	log.Infof("will send GET request to %s", url)
+
+	response, err := http.Get(url)
+
+	if err != nil {
+		log.Errorf("REST request failed. Error: %s", err.Error())
+		return "", err
+	}
+
+	log.Infof("got response status %s", response.Status)
+	if response.StatusCode != 200 {
+		log.Errorf("REST request on %s failed. Status: %s, Body = %s", url, response.Status, response.Body)
+		// NOTE: returning detailled error messages here is safe as this function
+		//       is only called locally (see check above). DO NOT expose sensitive information in other calls.
+		return "", fmt.Errorf("REST request on %s failed: Status = %s, Body = %s", url, response.Status, response.Body)
+	}
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Errorf("failed to decode body (status = %s, header = %s)", response.Status, response.Header)
+		return "", err
+	}
+
+	// return result
+	return string(body), nil
+}
