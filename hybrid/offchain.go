@@ -285,7 +285,7 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 	// build event object
 	eventName := "STORE:" + dataType
 	timestampString := time.Unix(txTimestamp.Seconds, int64(txTimestamp.Nanos)).Format(time.RFC3339)
-	payload := `{ "storageLocation" : "` + storageLocation + `" }`
+	payload := `{ "storageKey" : "` + key + `" }`
 	eventData := EventData{MSP: invokingMSPID, EventName: eventName, Timestamp: timestampString, Data: payload}
 
 	// send event notification
