@@ -322,6 +322,16 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 		return "", err
 	}
 
+	// only allow target override if called locally
+	localMSPID := os.Getenv("CORE_PEER_LOCALMSPID")
+	if invokingMSPID != localMSPID {
+		// called from a external MSP
+		if targetMSPID != localMSPID {
+			// external MSP wants to set an invalid targetMSP
+			return "", fmt.Errorf("forbidden: invalid targetMSPID. only local overrides are allowed")
+		}
+	}
+
 	// calc hash over the data
 	sha256 := sha256.Sum256([]byte(documentBase64))
 	dataHash := hex.EncodeToString(sha256[:])
