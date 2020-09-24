@@ -163,6 +163,43 @@ func printSignatureResponse(input map[string]string) {
 	}
 }
 
+func TestRestConfig(t *testing.T) {
+	// init contracts
+	contractORG1 := RoamingSmartContract{}
+	//contractORG2 := RoamingSmartContract{}
+
+	// create internal state map
+	mockStub := historyshimtest.NewMockStub("roamingState", nil)
+
+	// Prepare transient data map
+	var transient map[string][]byte
+	transient = make(map[string][]byte)
+
+	// ORG1
+	txContextORG1, err := prepareTransactionContext(mockStub, ORG1.Name, ORG1.Certificate)
+	require.NoError(t, err)
+
+	// ORG2
+	txContextORG2, err := prepareTransactionContext(mockStub, ORG2.Name, ORG2.Certificate)
+	require.NoError(t, err)
+
+	// Set transient data for Org1
+	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
+	transient["uri"] = []byte("http://localhost:3001")
+	mockStub.TransientMap = transient
+	err = contractORG1.SetRESTConfig(txContextORG1)
+	require.NoError(t, err)
+
+	// read back with ORG1
+	uri, err := contractORG1.GetRESTConfig(txContextORG1)
+	require.NoError(t, err)
+	log.Infof("read back uri <%s>\n", uri)
+
+	// read back with ORG2 -> this has to fail!
+	_, err = contractORG1.GetRESTConfig(txContextORG2)
+	require.Error(t, err)
+}
+
 func TestExchangeAndSigning(t *testing.T) {
 	//start two simple rest servers to handle requests from chaincode
 	startRestServer(3001) //ORG1
@@ -205,7 +242,7 @@ func TestExchangeAndSigning(t *testing.T) {
 	// note that this is not allowed on chaincode calls
 	// as getRESTConfig is not exported
 	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
-	uri, err := contractORG1.getRESTConfig(txContextORG1)
+	uri, err := contractORG1.GetRESTConfig(txContextORG1)
 	log.Infof("read back uri <%s>\n", uri)
 	require.NoError(t, err)
 
@@ -333,7 +370,7 @@ func TestGetDocumentID(t *testing.T) {
 	// note that this is not allowed on chaincode calls
 	// as getRESTConfig is not exported
 	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
-	uri, err := contractORG1.getRESTConfig(txContextORG1)
+	uri, err := contractORG1.GetRESTConfig(txContextORG1)
 	log.Infof("read back uri <%s>\n", uri)
 	require.NoError(t, err)
 
