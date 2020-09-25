@@ -125,7 +125,7 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument"}
+	return []string{"CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocuments"}
 }
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
@@ -406,13 +406,25 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 // only use this on local queries
 func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) (string, error) {
 	log.Infof("fetching document with id " + documentID)
+	return s.privateDocumentsAccess(ctx, "/documents/"+documentID)
+}
 
+// FetchPrivateDocuments will return a list of the last n private documents
+// for now n=100, see offchain db adapter
+// ACL restricted to local queries only
+func (s *RoamingSmartContract) FetchPrivateDocuments(ctx contractapi.TransactionContextInterface) (string, error) {
+	return s.privateDocumentsAccess(ctx, "/documents")
+}
+
+func (s *RoamingSmartContract) privateDocumentsAccess(ctx contractapi.TransactionContextInterface, path string) (string, error) {
 	// get the calling MSP
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
 		log.Errorf("failed to fetch MSPID: %s", err.Error())
 		return "", err
 	}
+
+	log.Infof(invokingMSPID + " accessing private documents via path " + path)
 
 	// verify that this is a local call
 	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
@@ -427,7 +439,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// offchain-db-adapter target url
-	url := baseURL + "/documents/" + documentID
+	url := baseURL + path
 	log.Infof("will send GET request to %s", url)
 
 	response, err := http.Get(url)

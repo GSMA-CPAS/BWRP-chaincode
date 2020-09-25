@@ -7,305 +7,256 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"hybrid/historyshimtest"
-	"hybrid/mocks"
-	"io/ioutil"
-	"net/http"
+	"hybrid/test/chaincode"
+	. "hybrid/test/data"
+	"hybrid/test/historyshimtest"
+	"hybrid/test/mocks"
+	"hybrid/test/rest"
 	"os"
 	"strconv"
 	"testing"
-	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
-	"github.com/hyperledger/fabric-chaincode-go/shim"
-	"github.com/hyperledger/fabric-contract-api-go/contractapi"
-	"github.com/hyperledger/fabric-protos-go/msp"
-	"github.com/labstack/echo/v4"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate counterfeiter -o mocks/chaincodestub.go -fake-name ChaincodeStub . chaincodeStub
-type chaincodeStub interface {
-	shim.ChaincodeStubInterface
+type EndpointMap map[*Organization]Endpoint
+
+type Endpoint struct {
+	org       *Organization
+	contract  *RoamingSmartContract
+	txContext *mocks.TransactionContext
+	stub      *historyshimtest.MockStub
 }
 
-//go:generate counterfeiter -o mocks/transaction.go -fake-name TransactionContext . transactionContext
-type transactionContext interface {
-	contractapi.TransactionContextInterface
+func createEndpoints(t *testing.T) EndpointMap {
+	var endpoints EndpointMap
+	endpoints = make(EndpointMap)
+
+	// set loglevel
+	log.SetLevel(log.InfoLevel)
+
+	// set up stub
+	mockStub := historyshimtest.NewMockStub("roamingState", nil)
+
+	endpoints[&ORG1] = configureEndpoint(t, mockStub, ORG1)
+	endpoints[&ORG2] = configureEndpoint(t, mockStub, ORG2)
+
+	return endpoints
 }
 
-func createIdentity(mspID string, idbytes []byte) ([]byte, error) {
-	sid := &msp.SerializedIdentity{Mspid: mspID, IdBytes: idbytes}
-	b, err := proto.Marshal(sid)
-	return b, err
+func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Organization) Endpoint {
+	var ep Endpoint
+	ep.org = &org
+	log.Infof(ep.org.Name + ": configuring rest endpoint")
+
+	// store mockstub
+	ep.stub = mockStub
+
+	// set up local msp id
+	os.Setenv("CORE_PEER_LOCALMSPID", ep.org.Name)
+
+	//start a simple rest servers to handle requests from chaincode
+	rest.StartServer(ep.org.RestConfigPort)
+
+	// init contract
+	ep.contract = &RoamingSmartContract{}
+
+	// tx context
+	txContext, err := chaincode.PrepareTransactionContext(ep.stub, ep.org.Name, ep.org.Certificate)
+	require.NoError(t, err)
+
+	// use context
+	ep.txContext = txContext
+
+	// set transient data for setting rest config
+	var transient map[string][]byte
+	transient = make(map[string][]byte)
+	targetURI := "http://localhost:" + strconv.Itoa(ep.org.RestConfigPort)
+	transient["uri"] = []byte(targetURI)
+	mockStub.TransientMap = transient
+	err = ep.contract.SetRESTConfig(ep.txContext)
+	require.NoError(t, err)
+
+	// read back for debugging and testing
+	uri, err := ep.contract.GetRESTConfig(ep.txContext)
+	log.Infof(ep.org.Name+": read back uri <%s>\n", uri)
+	require.NoError(t, err)
+	require.EqualValues(t, uri, targetURI)
+
+	return ep
 }
 
-func prepareTransactionContext(stub *historyshimtest.MockStub, orgmsp string, cert []byte) (*mocks.TransactionContext, error) {
-	creator, err := createIdentity(orgmsp, cert)
-	stub.Creator = creator
-
-	if err != nil {
-		return nil, err
-	}
-
-	clientID, err := cid.New(stub)
-	if err != nil {
-		return nil, err
-	}
-
-	// tell the mock setup what to return
-	transactionContext := &mocks.TransactionContext{}
-	transactionContext.GetStubReturns(stub)
-	transactionContext.GetClientIdentityReturns(clientID)
-
-	return transactionContext, nil
+// add forwarding functions
+// those will make sure that the LOCALMSPID is always equal to the local organization
+// and will additionally allow the calls to be executed in the caller's context
+func (ep EndpointMap) storePrivateDocument(local *Organization, caller *Organization, targetMSPID string, documentID string, documentBase64 string) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	return ep[local].contract.StorePrivateDocument(ep[caller].txContext, targetMSPID, documentID, documentBase64)
 }
 
-var dummyDB = make(map[string]string)
-
-func storeData(c echo.Context) error {
-	body, _ := ioutil.ReadAll(c.Request().Body)
-	log.Infof("on %s got: %s", c.Echo().Server.Addr, string(body))
-
-	// extract hash
-	id := c.Param("id")
-	if len(id) != 64 {
-		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(id))+`" }`)
-	}
-
-	//store data
-	log.Infof("DB[%s] = %s", id, string(body))
-	dummyDB[id] = string(body)
-
-	// calc hash for return value
-	var document map[string]interface{}
-	json.Unmarshal(body, &document)
-	data := document["data"].(string)
-	hash := sha256.Sum256([]byte(data))
-	hashs := hex.EncodeToString(hash[:])
-
-	// return the hash in the same way as the offchain-db-adapter
-	return c.String(http.StatusOK, hashs)
+func (ep EndpointMap) fetchPrivateDocument(local *Organization, caller *Organization, documentID string) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	return ep[local].contract.FetchPrivateDocument(ep[caller].txContext, documentID)
 }
 
-func fetchData(c echo.Context) error {
-	// extract id
-	id := c.Param("id")
-	if len(id) != 64 {
-		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(id))+`" }`)
-	}
-
-	// access dummy db
-	val, knownHash := dummyDB[id]
-	if !knownHash {
-		log.Errorf("could not find id " + id + " in db")
-		return c.String(http.StatusInternalServerError, "id not found")
-	}
-
-	// return the data
-	return c.String(http.StatusOK, val)
+func (ep EndpointMap) fetchPrivateDocuments(local *Organization, caller *Organization) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	return ep[local].contract.FetchPrivateDocuments(ep[caller].txContext)
 }
 
-func fetchDocumentID(c echo.Context) error {
-	// extract id
-	storageKey := c.Param("storageKey")
-	if len(storageKey) != 64 {
-		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(storageKey))+`" }`)
-	}
-
-	// access dummy db
-	// loop through all (inefficient but good enough for this test)
-	for id, data := range dummyDB {
-		var document map[string]interface{}
-		json.Unmarshal([]byte(data), &document)
-
-		// calc hash of from storageKey
-		tmp := sha256.Sum256([]byte(document["fromMSP"].(string) + id))
-		if hex.EncodeToString(tmp[:]) == storageKey {
-			return c.String(http.StatusOK, `{ "documentID": "`+id+`" }`)
-		}
-		// calc hash of to storageKey
-		tmp = sha256.Sum256([]byte(document["fromMSP"].(string) + id))
-		if hex.EncodeToString(tmp[:]) == storageKey {
-			return c.String(http.StatusOK, `{ "documentID": "`+id+`" }`)
-		}
-	}
-
-	log.Errorf("could not find storageKey " + storageKey + " in db")
-	return c.String(http.StatusInternalServerError, "id not found")
+func (ep EndpointMap) createStorageKey(local *Organization, caller *Organization, targetMSPID string, documentID string) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	return ep[local].contract.CreateStorageKey(targetMSPID, documentID) // TODO: no tx context in this func?!
 }
 
-func startRestServer(port int) {
-	e := echo.New()
-
-	// define routes
-	e.PUT("/documents/:id", storeData)
-	e.GET("/documents/:id", fetchData)
-	e.GET("/documentIDs/:storageKey", fetchDocumentID)
-
-	// start server
-	url := ":" + strconv.Itoa(port)
-	log.Info("will listen on " + url)
-	go func() {
-		err := e.Start(url)
-		if err != nil {
-			log.Panic(err)
-		}
-	}()
-	time.Sleep(200 * time.Millisecond)
+func (ep EndpointMap) getDocumentID(local *Organization, caller *Organization, storageKey string) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	return ep[local].contract.GetDocumentID(ep[caller].txContext, storageKey)
 }
 
-func printSignatureResponse(input map[string]string) {
-	for txID, signature := range input {
-		log.Infof("txID: %s => signature: %s", txID, signature)
-	}
+func (ep EndpointMap) getRESTConfig(local *Organization, caller *Organization) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	return ep[local].contract.GetRESTConfig(ep[caller].txContext)
+}
+
+func (ep EndpointMap) createDocumentID(local *Organization, caller *Organization) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	return ep[local].contract.CreateDocumentID(ep[caller].txContext)
+}
+
+func (ep EndpointMap) getSignatures(local *Organization, caller *Organization, targetMSPID string, key string) (map[string]string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	return ep[local].contract.GetSignatures(ep[caller].txContext, targetMSPID, key)
+}
+
+func (ep EndpointMap) invokeStoreDocumentHash(local *Organization, caller *Organization, key string, documentHash string) error {
+	txid := local.Name + ":" + uuid.New().String()
+	ep[local].stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	err := ep[local].contract.StoreDocumentHash(ep[caller].txContext, key, documentHash)
+	ep[local].stub.MockTransactionEnd(txid)
+	return err
+}
+
+func (ep EndpointMap) invokeStoreSignature(local *Organization, caller *Organization, key string, signatureJSON string) error {
+	txid := local.Name + ":" + uuid.New().String()
+	ep[local].stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
+	err := ep[local].contract.StoreSignature(ep[caller].txContext, key, signatureJSON)
+	ep[local].stub.MockTransactionEnd(txid)
+	return err
+}
+
+func TestPrivateDocumentAccess(t *testing.T) {
+	// set up proper endpoints
+	ep := createEndpoints(t)
+
+	// read private documents on ORG1 with ORG1 tx context
+	response, err := ep.fetchPrivateDocuments(&ORG1, &ORG1)
+	require.NoError(t, err)
+	log.Info(response)
+
+	// read private documents on ORG1 with ORG2 tx context
+	response, err = ep.fetchPrivateDocuments(&ORG1, &ORG2)
+	require.Error(t, err)
+	log.Info(response)
+}
+
+func TestRestConfig(t *testing.T) {
+	log.Infof("testing REST")
+	// set up proper endpoints
+	ep := createEndpoints(t)
+
+	// read rest config on ORG1 with ORG1 context
+	uri, err := ep.getRESTConfig(&ORG1, &ORG1)
+	require.NoError(t, err)
+	log.Infof("read back uri <%s>\n", uri)
+
+	// read back with txcontext ORG2 -> this has to fail!
+	_, err = ep.getRESTConfig(&ORG1, &ORG2)
+	require.Error(t, err)
 }
 
 func TestExchangeAndSigning(t *testing.T) {
-	//start two simple rest servers to handle requests from chaincode
-	startRestServer(3001) //ORG1
-	startRestServer(3002) //ORG2
-
-	// init contracts
-	contractORG1 := RoamingSmartContract{}
-	contractORG2 := RoamingSmartContract{}
-
-	// create internal state map
-	mockStub := historyshimtest.NewMockStub("roamingState", nil)
-
-	// ### Org1 creates a document and sends it to Org2:
-	// a test document:
-	documentBase64 := base64.StdEncoding.EncodeToString([]byte(`data!1234...`))
-
-	// calc data hash
-	tmp := sha256.Sum256([]byte(documentBase64))
-	dataHash := hex.EncodeToString(tmp[:])
-
-	// Prepare transient data map
-	var transient map[string][]byte
-	transient = make(map[string][]byte)
-
-	// ORG1 as "sender"
-	txContextORG1, err := prepareTransactionContext(mockStub, ORG1.Name, ORG1.Certificate)
-	require.NoError(t, err)
-
-	// ORG2 as "receiver" and later signer
-	txContextORG2, err := prepareTransactionContext(mockStub, ORG2.Name, ORG2.Certificate)
-	require.NoError(t, err)
-
-	// Set transient data for Org1
-	transient["uri"] = []byte("http://localhost:3001")
-	mockStub.TransientMap = transient
-	err = contractORG1.SetRESTConfig(txContextORG1)
-	require.NoError(t, err)
-
-	// read back for debugging
-	// note that this is not allowed on chaincode calls
-	// as getRESTConfig is not exported
-	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
-	uri, err := contractORG1.getRESTConfig(txContextORG1)
-	log.Infof("read back uri <%s>\n", uri)
-	require.NoError(t, err)
-
-	// Set transient data for Org2
-	transient["uri"] = []byte("http://localhost:3002")
-	mockStub.TransientMap = transient
-	err = contractORG2.SetRESTConfig(txContextORG2)
-	require.NoError(t, err)
+	// set up proper endpoints
+	ep := createEndpoints(t)
 
 	// calc documentID
-	documentID, err := contractORG1.CreateDocumentID(txContextORG1)
+	documentID, err := ep.createDocumentID(&ORG1, &ORG1)
 	require.NoError(t, err)
 	log.Infof("got docID <%s>\n", documentID)
 
 	// QUERY store document on ORG1 (local)
-	hash, err := contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, documentID, documentBase64)
+	hash, err := ep.storePrivateDocument(&ORG1, &ORG1, ORG2.Name, documentID, ExampleDocument.Data64)
 	require.NoError(t, err)
-	require.EqualValues(t, hash, dataHash)
+	require.EqualValues(t, hash, ExampleDocument.Hash)
 
 	// VERIFY that it was written
-	data, err := contractORG1.FetchPrivateDocument(txContextORG1, documentID)
+	data, err := ep.fetchPrivateDocument(&ORG1, &ORG1, documentID)
 	require.NoError(t, err)
-	// TODO: check all attributes
+
+	// TODO: check all attributes...
 	var document map[string]interface{}
 	json.Unmarshal([]byte(data), &document)
-	require.EqualValues(t, document["data"], documentBase64)
+	require.EqualValues(t, document["data"], ExampleDocument.Data64)
 
 	// QUERY store document on ORG2 (remote)
-	hash, err = contractORG2.StorePrivateDocument(txContextORG1, ORG2.Name, documentID, documentBase64)
+	hash, err = ep.storePrivateDocument(&ORG2, &ORG1, ORG2.Name, documentID, ExampleDocument.Data64)
 	require.NoError(t, err)
-	require.EqualValues(t, hash, dataHash)
+	require.EqualValues(t, hash, ExampleDocument.Hash)
 
 	// QUERY create storage key
-	storagekeyORG1, err := contractORG1.CreateStorageKey(ORG1.Name, documentID)
+	storagekeyORG1, err := ep.createStorageKey(&ORG1, &ORG1, ORG1.Name, documentID)
 	require.NoError(t, err)
 
-	// start tx
-	mockStub.MockTransactionStart("tx0")
 	// upload document hash on the ledger
-	err = contractORG1.StoreDocumentHash(txContextORG1, storagekeyORG1, dataHash)
+	err = ep.invokeStoreDocumentHash(&ORG1, &ORG1, storagekeyORG1, ExampleDocument.Hash)
 	require.NoError(t, err)
-	// execute tx
-	mockStub.MockTransactionEnd("tx0")
 
 	// ### org1 signs document:
 	// create signature (later provided by external API/client)
 	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
-	// start tx
-	mockStub.MockTransactionStart("tx1")
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = contractORG1.StoreSignature(txContextORG1, storagekeyORG1, signatureORG1)
+	err = ep.invokeStoreSignature(&ORG1, &ORG1, storagekeyORG1, signatureORG1)
 	require.NoError(t, err)
-	// execute tx
-	mockStub.MockTransactionEnd("tx1")
 
 	// ### org2 signs document:
 	// QUERY create storage key
-	storagekeyORG2, err := contractORG2.CreateStorageKey(ORG2.Name, documentID)
+	storagekeyORG2, err := ep.createStorageKey(&ORG2, &ORG2, ORG2.Name, documentID)
 	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
-	// start tx
-	mockStub.MockTransactionStart("tx2")
+
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = contractORG2.StoreSignature(txContextORG2, storagekeyORG2, signatureORG2)
+	err = ep.invokeStoreSignature(&ORG1, &ORG2, storagekeyORG2, signatureORG2)
 	require.NoError(t, err)
-	// execute tx
-	mockStub.MockTransactionEnd("tx2")
 
 	// ### (optional) org1 checks signatures of org2 on document:
 	// QUERY create expected key
-	storagekeypartnerORG2, err := contractORG1.CreateStorageKey(ORG2.Name, documentID)
+	storagekeypartnerORG2, err := ep[&ORG1].contract.CreateStorageKey(ORG2.Name, documentID)
 	require.Equal(t, storagekeyORG2, storagekeypartnerORG2)
 	require.NoError(t, err)
 	// QUERY GetSignatures
-	signatures, err := contractORG1.GetSignatures(txContextORG1, ORG2.Name, storagekeypartnerORG2)
+	signatures, err := ep.getSignatures(&ORG1, &ORG1, ORG2.Name, storagekeypartnerORG2)
 	require.NoError(t, err)
-	printSignatureResponse(signatures)
+	chaincode.PrintSignatureResponse(signatures)
 
 	// ### (optional) org2 checks signatures of org1 on document:
 	// QUERY create expected key
-	storagekeypartnerORG1, err := contractORG2.CreateStorageKey(ORG1.Name, documentID)
+	storagekeypartnerORG1, err := ep[&ORG2].contract.CreateStorageKey(ORG1.Name, documentID)
 	require.NoError(t, err)
 	// QUERY GetSignatures
-	signatures, err = contractORG2.GetSignatures(txContextORG2, ORG1.Name, storagekeypartnerORG1)
+	signatures, err = ep.getSignatures(&ORG2, &ORG2, ORG1.Name, storagekeypartnerORG1)
 	require.NoError(t, err)
-	printSignatureResponse(signatures)
-
+	chaincode.PrintSignatureResponse(signatures)
 }
 
 // Test GetDocumentID storagekeyORG1
 func TestGetDocumentID(t *testing.T) {
-	//start two simple rest servers to handle requests from chaincode
-	startRestServer(3001) //ORG1
-
-	// init contracts
-	contractORG1 := RoamingSmartContract{}
-
-	// create internal state map
-	mockStub := historyshimtest.NewMockStub("roamingState", nil)
+	// set up proper endpoints
+	ep := createEndpoints(t)
 
 	// ### Org1 creates a document and sends it to Org2:
 	// a test document:
@@ -315,45 +266,23 @@ func TestGetDocumentID(t *testing.T) {
 	tmp := sha256.Sum256([]byte(documentBase64))
 	dataHash := hex.EncodeToString(tmp[:])
 
-	// Prepare transient data map
-	var transient map[string][]byte
-	transient = make(map[string][]byte)
-
-	// ORG1 as "sender"
-	txContextORG1, err := prepareTransactionContext(mockStub, ORG1.Name, ORG1.Certificate)
-	require.NoError(t, err)
-
-	// Set transient data for Org1
-	transient["uri"] = []byte("http://localhost:3001")
-	mockStub.TransientMap = transient
-	err = contractORG1.SetRESTConfig(txContextORG1)
-	require.NoError(t, err)
-
-	// read back for debugging
-	// note that this is not allowed on chaincode calls
-	// as getRESTConfig is not exported
-	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
-	uri, err := contractORG1.getRESTConfig(txContextORG1)
-	log.Infof("read back uri <%s>\n", uri)
-	require.NoError(t, err)
-
 	// calc documentID
-	documentID, err := contractORG1.CreateDocumentID(txContextORG1)
+	documentID, err := ep[&ORG1].contract.CreateDocumentID(ep[&ORG1].txContext)
 	require.NoError(t, err)
 	log.Infof("got docID <%s>\n", documentID)
 
 	// QUERY store document on ORG1 (local)
-	hash, err := contractORG1.StorePrivateDocument(txContextORG1, ORG2.Name, documentID, documentBase64)
+	hash, err := ep.storePrivateDocument(&ORG1, &ORG1, ORG2.Name, documentID, documentBase64)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, dataHash)
 
 	// QUERY create storage key
-	storagekeyORG1, err := contractORG1.CreateStorageKey(ORG1.Name, documentID)
+	storagekeyORG1, err := ep.createStorageKey(&ORG1, &ORG1, ORG1.Name, documentID)
 	require.NoError(t, err)
 
 	// ### (optional) org2 checks signatures of org1 on document:
 	// QUERY create expected key
-	response, err := contractORG1.GetDocumentID(txContextORG1, storagekeyORG1)
+	response, err := ep.getDocumentID(&ORG1, &ORG1, storagekeyORG1)
 	require.NoError(t, err)
 	var responseJSON map[string]interface{}
 	log.Infof(response)

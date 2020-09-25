@@ -20,7 +20,7 @@
   - uuid4 is 2^128, docID is 2^256
   - RFC4122: "...Do not assume that UUIDs are hard to guess; they should not be used as security capabilities..."
 
-# prerequisites #
+# prerequisites for testing #
 
 counterfeiter is installed, if not:
 GO111MODULE=off go get -u github.com/maxbrunsfeld/counterfeiter
