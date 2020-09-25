@@ -5,7 +5,9 @@ import (
 	"hybrid/test/mocks"
 
 	"github.com/cloudflare/cfssl/log"
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
+	"github.com/hyperledger/fabric-protos-go/msp"
 )
 
 // PrepareTransactionContext prepares a tx context
@@ -35,4 +37,10 @@ func PrintSignatureResponse(input map[string]string) {
 	for txID, signature := range input {
 		log.Infof("txID: %s => signature: %s", txID, signature)
 	}
+}
+
+func createIdentity(mspID string, idbytes []byte) ([]byte, error) {
+	sid := &msp.SerializedIdentity{Mspid: mspID, IdBytes: idbytes}
+	b, err := proto.Marshal(sid)
+	return b, err
 }
