@@ -40,7 +40,7 @@ func storeData(c echo.Context) error {
 	return c.String(http.StatusOK, hashs)
 }
 
-func fetchData(c echo.Context) error {
+func fetchDocument(c echo.Context) error {
 	// extract id
 	id := c.Param("id")
 	if len(id) != 64 {
@@ -56,6 +56,27 @@ func fetchData(c echo.Context) error {
 
 	// return the data
 	return c.String(http.StatusOK, val)
+}
+
+func fetchDocuments(c echo.Context) error {
+	var documents map[string]map[string]interface{}
+	documents = make(map[string]map[string]interface{})
+
+	for id, data := range dummyDB {
+		var document map[string]interface{}
+		json.Unmarshal([]byte(data), &document)
+
+		documents[id] = document
+	}
+
+	val, err := json.Marshal(documents)
+
+	if err != nil {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
+
+	// return the data
+	return c.String(http.StatusOK, string(val))
 }
 
 func fetchDocumentID(c echo.Context) error {
@@ -93,7 +114,8 @@ func StartServer(port int) {
 
 	// define routes
 	e.PUT("/documents/:id", storeData)
-	e.GET("/documents/:id", fetchData)
+	e.GET("/documents/:id", fetchDocument)
+	e.GET("/documents", fetchDocuments)
 	e.GET("/documentIDs/:storageKey", fetchDocumentID)
 
 	// start server
