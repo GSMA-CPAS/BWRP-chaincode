@@ -3,6 +3,7 @@ module hybrid
 go 1.14
 
 require (
+	github.com/cloudflare/cfssl v0.0.0-20190510060611-9c027c93ba9e
 	github.com/davidrjenni/reftools v0.0.0-20191222082827-65925cf01315 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/protobuf v1.4.2
