@@ -2,7 +2,7 @@ package main
 
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
-import ( 
+import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -30,20 +30,17 @@ type Endpoint struct {
 	stub      *historyshimtest.MockStub
 }
 
-func createEndpoints(t *testing.T) EndpointMap {
-	var endpoints EndpointMap
-	endpoints = make(EndpointMap)
-
+func createEndpoints(t *testing.T) (Endpoint, Endpoint) {
 	// set loglevel
 	log.SetLevel(log.InfoLevel)
 
 	// set up stub
 	mockStub := historyshimtest.NewMockStub("roamingState", nil)
 
-	endpoints[&ORG1] = configureEndpoint(t, mockStub, ORG1)
-	endpoints[&ORG2] = configureEndpoint(t, mockStub, ORG2)
+	epORG1 := configureEndpoint(t, mockStub, ORG1)
+	epORG2 := configureEndpoint(t, mockStub, ORG2)
 
-	return endpoints
+	return epORG1, epORG2
 }
 
 func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Organization) Endpoint {
@@ -91,75 +88,75 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 // add forwarding functions
 // those will make sure that the LOCALMSPID is always equal to the local organization
 // and will additionally allow the calls to be executed in the caller's context
-func (ep EndpointMap) storePrivateDocument(local *Organization, caller *Organization, targetMSPID string, documentID string, documentBase64 string) (string, error) {
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	return ep[local].contract.StorePrivateDocument(ep[caller].txContext, targetMSPID, documentID, documentBase64)
+func (local Endpoint) storePrivateDocument(caller Endpoint, targetMSPID string, documentID string, documentBase64 string) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.StorePrivateDocument(caller.txContext, targetMSPID, documentID, documentBase64)
 }
 
-func (ep EndpointMap) fetchPrivateDocument(local *Organization, caller *Organization, documentID string) (string, error) {
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	return ep[local].contract.FetchPrivateDocument(ep[caller].txContext, documentID)
+func (local Endpoint) fetchPrivateDocument(caller Endpoint, documentID string) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.FetchPrivateDocument(caller.txContext, documentID)
 }
 
-func (ep EndpointMap) fetchPrivateDocuments(local *Organization, caller *Organization) (string, error) {
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	return ep[local].contract.FetchPrivateDocuments(ep[caller].txContext)
+func (local Endpoint) fetchPrivateDocuments(caller Endpoint) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.FetchPrivateDocuments(caller.txContext)
 }
 
-func (ep EndpointMap) createStorageKey(local *Organization, caller *Organization, targetMSPID string, documentID string) (string, error) {
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	return ep[local].contract.CreateStorageKey(targetMSPID, documentID) // TODO: no tx context in this func?!
+func (local Endpoint) createStorageKey(caller Endpoint, targetMSPID string, documentID string) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.CreateStorageKey(targetMSPID, documentID) // TODO: no tx context in this func?!
 }
 
-func (ep EndpointMap) getDocumentID(local *Organization, caller *Organization, storageKey string) (string, error) {
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	return ep[local].contract.GetDocumentID(ep[caller].txContext, storageKey)
+func (local Endpoint) getDocumentID(caller Endpoint, storageKey string) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.GetDocumentID(caller.txContext, storageKey)
 }
 
-func (ep EndpointMap) getRESTConfig(local *Organization, caller *Organization) (string, error) {
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	return ep[local].contract.getRESTConfig(ep[caller].txContext)
+func (local Endpoint) getRESTConfig(caller Endpoint) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.getRESTConfig(caller.txContext)
 }
 
-func (ep EndpointMap) createDocumentID(local *Organization, caller *Organization) (string, error) {
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	return ep[local].contract.CreateDocumentID(ep[caller].txContext)
+func (local Endpoint) createDocumentID(caller Endpoint) (string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.CreateDocumentID(caller.txContext)
 }
 
-func (ep EndpointMap) getSignatures(local *Organization, caller *Organization, targetMSPID string, key string) (map[string]string, error) {
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	return ep[local].contract.GetSignatures(ep[caller].txContext, targetMSPID, key)
+func (local Endpoint) getSignatures(caller Endpoint, targetMSPID string, key string) (map[string]string, error) {
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.GetSignatures(caller.txContext, targetMSPID, key)
 }
 
-func (ep EndpointMap) invokeStoreDocumentHash(local *Organization, caller *Organization, key string, documentHash string) error {
-	txid := local.Name + ":" + uuid.New().String()
-	ep[local].stub.MockTransactionStart(txid)
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	err := ep[local].contract.StoreDocumentHash(ep[caller].txContext, key, documentHash)
-	ep[local].stub.MockTransactionEnd(txid)
+func (local Endpoint) invokeStoreDocumentHash(caller Endpoint, key string, documentHash string) error {
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.StoreDocumentHash(caller.txContext, key, documentHash)
+	local.stub.MockTransactionEnd(txid)
 	return err
 }
 
-func (ep EndpointMap) invokeStoreSignature(local *Organization, caller *Organization, key string, signatureJSON string) error {
-	txid := local.Name + ":" + uuid.New().String()
-	ep[local].stub.MockTransactionStart(txid)
-	os.Setenv("CORE_PEER_LOCALMSPID", ep[local].org.Name)
-	err := ep[local].contract.StoreSignature(ep[caller].txContext, key, signatureJSON)
-	ep[local].stub.MockTransactionEnd(txid)
+func (local Endpoint) invokeStoreSignature(caller Endpoint, key string, signatureJSON string) error {
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.StoreSignature(caller.txContext, key, signatureJSON)
+	local.stub.MockTransactionEnd(txid)
 	return err
 }
 
 func TestPrivateDocumentAccess(t *testing.T) {
 	// set up proper endpoints
-	ep := createEndpoints(t)
+	ep1, ep2 := createEndpoints(t)
 
 	// read private documents on ORG1 with ORG1 tx context
-	response, err := ep.fetchPrivateDocuments(&ORG1, &ORG1)
+	response, err := ep1.fetchPrivateDocuments(ep1)
 	require.NoError(t, err)
 	log.Info(response)
 
 	// read private documents on ORG1 with ORG2 tx context
-	response, err = ep.fetchPrivateDocuments(&ORG1, &ORG2)
+	response, err = ep1.fetchPrivateDocuments(ep2)
 	require.Error(t, err)
 	log.Info(response)
 }
@@ -181,20 +178,20 @@ func TestPrivateDocumentAccess(t *testing.T) {
 
 func TestExchangeAndSigning(t *testing.T) {
 	// set up proper endpoints
-	ep := createEndpoints(t)
+	ep1, ep2 := createEndpoints(t)
 
 	// calc documentID
-	documentID, err := ep.createDocumentID(&ORG1, &ORG1)
+	documentID, err := ep1.createDocumentID(ep2)
 	require.NoError(t, err)
 	log.Infof("got docID <%s>\n", documentID)
 
 	// QUERY store document on ORG1 (local)
-	hash, err := ep.storePrivateDocument(&ORG1, &ORG1, ORG2.Name, documentID, ExampleDocument.Data64)
+	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, documentID, ExampleDocument.Data64)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, ExampleDocument.Hash)
 
 	// VERIFY that it was written
-	data, err := ep.fetchPrivateDocument(&ORG1, &ORG1, documentID)
+	data, err := ep1.fetchPrivateDocument(ep1, documentID)
 	require.NoError(t, err)
 
 	// TODO: check all attributes...
@@ -203,52 +200,52 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.EqualValues(t, document["data"], ExampleDocument.Data64)
 
 	// QUERY store document on ORG2 (remote)
-	hash, err = ep.storePrivateDocument(&ORG2, &ORG1, ORG2.Name, documentID, ExampleDocument.Data64)
+	hash, err = ep2.storePrivateDocument(ep1, ORG2.Name, documentID, ExampleDocument.Data64)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, ExampleDocument.Hash)
 
 	// QUERY create storage key
-	storagekeyORG1, err := ep.createStorageKey(&ORG1, &ORG1, ORG1.Name, documentID)
+	storagekeyORG1, err := ep1.createStorageKey(ep1, ORG1.Name, documentID)
 	require.NoError(t, err)
 
 	// upload document hash on the ledger
-	err = ep.invokeStoreDocumentHash(&ORG1, &ORG1, storagekeyORG1, ExampleDocument.Hash)
+	err = ep1.invokeStoreDocumentHash(ep1, storagekeyORG1, ExampleDocument.Hash)
 	require.NoError(t, err)
 
 	// ### org1 signs document:
 	// create signature (later provided by external API/client)
 	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = ep.invokeStoreSignature(&ORG1, &ORG1, storagekeyORG1, signatureORG1)
+	err = ep1.invokeStoreSignature(ep1, storagekeyORG1, signatureORG1)
 	require.NoError(t, err)
 
 	// ### org2 signs document:
 	// QUERY create storage key
-	storagekeyORG2, err := ep.createStorageKey(&ORG2, &ORG2, ORG2.Name, documentID)
+	storagekeyORG2, err := ep2.createStorageKey(ep2, ORG2.Name, documentID)
 	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
 
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = ep.invokeStoreSignature(&ORG1, &ORG2, storagekeyORG2, signatureORG2)
+	err = ep1.invokeStoreSignature(ep2, storagekeyORG2, signatureORG2)
 	require.NoError(t, err)
 
 	// ### (optional) org1 checks signatures of org2 on document:
 	// QUERY create expected key
-	storagekeypartnerORG2, err := ep[&ORG1].contract.CreateStorageKey(ORG2.Name, documentID)
+	storagekeypartnerORG2, err := ep1.createStorageKey(ep1, ORG2.Name, documentID)
 	require.Equal(t, storagekeyORG2, storagekeypartnerORG2)
 	require.NoError(t, err)
 	// QUERY GetSignatures
-	signatures, err := ep.getSignatures(&ORG1, &ORG1, ORG2.Name, storagekeypartnerORG2)
+	signatures, err := ep1.getSignatures(ep1, ORG2.Name, storagekeypartnerORG2)
 	require.NoError(t, err)
 	chaincode.PrintSignatureResponse(signatures)
 
 	// ### (optional) org2 checks signatures of org1 on document:
 	// QUERY create expected key
-	storagekeypartnerORG1, err := ep[&ORG2].contract.CreateStorageKey(ORG1.Name, documentID)
+	storagekeypartnerORG1, err := ep2.createStorageKey(ep2, ORG1.Name, documentID)
 	require.NoError(t, err)
 	// QUERY GetSignatures
-	signatures, err = ep.getSignatures(&ORG2, &ORG2, ORG1.Name, storagekeypartnerORG1)
+	signatures, err = ep2.getSignatures(ep2, ORG1.Name, storagekeypartnerORG1)
 	require.NoError(t, err)
 	chaincode.PrintSignatureResponse(signatures)
 }
@@ -256,7 +253,7 @@ func TestExchangeAndSigning(t *testing.T) {
 // Test GetDocumentID storagekeyORG1
 func TestGetDocumentID(t *testing.T) {
 	// set up proper endpoints
-	ep := createEndpoints(t)
+	ep1, ep2 := createEndpoints(t)
 
 	// ### Org1 creates a document and sends it to Org2:
 	// a test document:
@@ -267,22 +264,22 @@ func TestGetDocumentID(t *testing.T) {
 	dataHash := hex.EncodeToString(tmp[:])
 
 	// calc documentID
-	documentID, err := ep[&ORG1].contract.CreateDocumentID(ep[&ORG1].txContext)
+	documentID, err := ep1.createDocumentID(ep1)
 	require.NoError(t, err)
 	log.Infof("got docID <%s>\n", documentID)
 
 	// QUERY store document on ORG1 (local)
-	hash, err := ep.storePrivateDocument(&ORG1, &ORG1, ORG2.Name, documentID, documentBase64)
+	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, documentID, documentBase64)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, dataHash)
 
 	// QUERY create storage key
-	storagekeyORG1, err := ep.createStorageKey(&ORG1, &ORG1, ORG1.Name, documentID)
+	storagekeyORG1, err := ep1.createStorageKey(ep1, ORG1.Name, documentID)
 	require.NoError(t, err)
 
 	// ### (optional) org2 checks signatures of org1 on document:
 	// QUERY create expected key
-	response, err := ep.getDocumentID(&ORG1, &ORG1, storagekeyORG1)
+	response, err := ep2.getDocumentID(ep2, storagekeyORG1)
 	require.NoError(t, err)
 	var responseJSON map[string]interface{}
 	log.Infof(response)
