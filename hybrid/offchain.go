@@ -75,9 +75,29 @@ type RoamingSmartContract struct {
 	contractapi.Contract
 }
 
+// GetRESTConfig returns the stored configuration for the rest endpoint
+// ACL restricted to local queries only
+func (s *RoamingSmartContract) GetRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
+	// get caller msp
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return "", err
+	}
+	// verify that this is a local call
+	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
+		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
+		return "", fmt.Errorf("access denied")
+	}
+	config, err := s.getLocalRESTConfig(ctx)
+
+	return config, err
+}
+
 // getRESTConfig returns the stored configuration for the rest endpoint
-// NOTE: this function should never be exported as it could reveal the network configuration
-func (s *RoamingSmartContract) getRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
+// this is only allowed to be called locally
+// NOTE: (1) DO NOT expose this as it might leak sensitive network configuration use GetRESTConfig for this.
+//       (2) always use the LOCALMSPID implicit collection here as we need the configuration of _this_ peer
+func (s *RoamingSmartContract) getLocalRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
 	// the getter will always use the local collection where this chaincode runs
 	implicitCollection := "_implicit_org_" + os.Getenv("CORE_PEER_LOCALMSPID")
 
@@ -125,7 +145,7 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument"}
+	return []string{"GetRESTConfig", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument"}
 }
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
@@ -352,7 +372,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// fetch the configured rest endpoint
-	baseURL, err := s.getRESTConfig(ctx)
+	baseURL, err := s.getLocalRESTConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}
@@ -403,7 +423,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 }
 
 // FetchPrivateDocument will return a private document identified by its documentID
-// only use this on local queries
+// ACL restricted to local queries only
 func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) (string, error) {
 	log.Infof("fetching document with id " + documentID)
 
@@ -421,7 +441,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// fetch the configured rest endpoint
-	baseURL, err := s.getRESTConfig(ctx)
+	baseURL, err := s.getLocalRESTConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}
@@ -457,7 +477,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 
 // GetDocumentID will return a private documentID based on a storageKey
 // This only works for documentIDs known to this MSP
-// only use this on local queries
+// ACL restricted to local queries only
 func (s *RoamingSmartContract) GetDocumentID(ctx contractapi.TransactionContextInterface, storageKey string) (string, error) {
 	log.Infof("fetching documentID for storageKey " + storageKey)
 
@@ -475,7 +495,7 @@ func (s *RoamingSmartContract) GetDocumentID(ctx contractapi.TransactionContextI
 	}
 
 	// fetch the configured rest endpoint
-	baseURL, err := s.getRESTConfig(ctx)
+	baseURL, err := s.getLocalRESTConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}
