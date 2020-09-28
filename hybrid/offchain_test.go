@@ -77,7 +77,7 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	require.NoError(t, err)
 
 	// read back for debugging and testing
-	uri, err := ep.contract.getRESTConfig(ep.txContext)
+	uri, err := ep.contract.GetRESTConfig(ep.txContext)
 	log.Infof(ep.org.Name+": read back uri <%s>\n", uri)
 	require.NoError(t, err)
 	require.EqualValues(t, uri, targetURI)
@@ -115,7 +115,7 @@ func (local Endpoint) getDocumentID(caller Endpoint, storageKey string) (string,
 
 func (local Endpoint) getRESTConfig(caller Endpoint) (string, error) {
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.getRESTConfig(caller.txContext)
+	return local.contract.GetRESTConfig(caller.txContext)
 }
 
 func (local Endpoint) createDocumentID(caller Endpoint) (string, error) {
