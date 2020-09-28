@@ -161,24 +161,23 @@ func TestPrivateDocumentAccess(t *testing.T) {
 	log.Info(response)
 }
 
-/*func TestRestConfig(t *testing.T) {
+func TestRestConfig(t *testing.T) {
 	log.Infof("testing REST")
 	// set up proper endpoints
-	ep := createEndpoints(t)
+	ep1, ep2 := createEndpoints(t)
 
 	// read back for debugging
 	// note that this is not allowed on chaincode calls
 	// as getRESTConfig is not exported
 	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
-	uri, err := contractORG1.GetRESTConfig(txContextORG1)
-	log.Infof("read back uri <%s>\n", uri)
+	uri, err := ep1.getRESTConfig(ep1)
 	require.NoError(t, err)
 	log.Infof("read back uri <%s>\n", uri)
 
 	// read back with txcontext ORG2 -> this has to fail!
-	_, err = ep.getRESTConfig(&ORG1, &ORG2)
+	_, err = ep1.getRESTConfig(ep2)
 	require.Error(t, err)
-}*/
+}
 
 func TestExchangeAndSigning(t *testing.T) {
 	// set up proper endpoints
