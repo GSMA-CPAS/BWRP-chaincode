@@ -122,6 +122,12 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 		return err
 	}
 
+	// verify that this is a local call
+	if mspID != os.Getenv("CORE_PEER_LOCALMSPID") {
+		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", mspID)
+		return fmt.Errorf("access denied")
+	}
+
 	// the setter will always set the collection that he owns!
 	implicitCollection := "_implicit_org_" + mspID
 
