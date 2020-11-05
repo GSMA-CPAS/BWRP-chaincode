@@ -16,5 +16,6 @@ require (
 	github.com/s7techlab/cckit v0.6.14
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.6.1
+	golang.org/x/tools/gopls v0.5.2 // indirect
 	google.golang.org/protobuf v1.23.0
 )

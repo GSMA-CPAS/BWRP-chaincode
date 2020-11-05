@@ -145,6 +145,12 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 
 	// store data in implicit collection
 	return ctx.GetStub().PutPrivateData(implicitCollection, "REST_URI", uri)
+
+	// do wee need to initialise the db?
+	err = util.prepareOffchainDatabase(uri)
+	if err != nil {
+		return err
+	}
 }
 
 // GetEvaluateTransactions returns functions of RoamingSmartContract to be tagged as evaluate (=query)
