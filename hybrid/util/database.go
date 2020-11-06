@@ -3,6 +3,7 @@ package util
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	couchdb "github.com/leesper/couchdb-golang"
@@ -130,4 +131,39 @@ func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) 
 	}
 
 	return storedData, nil
+}
+
+// OffchainDatabaseFetch fetch all document ids from the database
+func OffchainDatabaseFetchAllDocumentIDs(uri string) (string, error) {
+	log.Debugf("%s()", FunctionName())
+
+	// open couchdb connection
+	conn, err := couchdb.NewServer(uri)
+	if err != nil {
+		log.Error("failed to access couchdb: " + err.Error())
+		return "", err
+	}
+
+	// open db
+	db, err := conn.Get(offchainDatabaseName)
+	if err != nil {
+		log.Error("failed to open database: " + err.Error())
+		return "", err
+	}
+
+	// fetch all
+	ids, err := db.DocIDs()
+	if err != nil {
+		log.Error("failed to query document IDs: " + err.Error())
+		return "", fmt.Errorf("failed to query document IDS: %s", err.Error())
+	}
+
+	// convert to json
+	json, err := json.Marshal(ids)
+	if err != nil {
+		log.Error("failed to convert document IDs to json: " + err.Error())
+		return "", fmt.Errorf("failed to convert document IDs to json: %s", err.Error())
+	}
+
+	return string(json), nil
 }

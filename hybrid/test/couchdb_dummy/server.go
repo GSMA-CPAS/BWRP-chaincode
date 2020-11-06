@@ -126,6 +126,24 @@ func fetchDocumentID(c echo.Context) error {
 	return c.String(http.StatusInternalServerError, "id not found")
 }
 
+func fetchAllDocumentIDs(c echo.Context) error {
+	// access dummy db
+	db := dummyDB[c.Echo().Server.Addr]
+
+	// CONTINUE: required response:
+	//{"total_rows":1,"offset":0,"rows":[
+	//{"id":"324aa9cf10e4bb8bd8995d2cb76dbbf6afe097ad06c766e68ea14d55452e9e8a","key":"324aa9cf10e4bb8bd8995d2cb76dbbf6afe097ad06c766e68ea14d55452e9e8a","value":{"rev":"1-ba8d8812afd2ba7be6c81c2e4c90e9c4"}}
+	//]}
+
+	res, err := json.Marshal(db)
+	if err != nil {
+		log.Info(err.Error())
+		return c.String(http.StatusInternalServerError, `{"error" = "`+err.Error()+`"}`)
+	}
+
+	return c.String(http.StatusOK, string(res))
+}
+
 func returnOK(c echo.Context) error {
 	return c.String(http.StatusOK, `{ "ok": true }`)
 }
@@ -148,6 +166,7 @@ func StartServer(port int) {
 	e.HEAD("/offchain_data/:id", fetchDocument)
 	e.PUT("/offchain_data/:id", storeData)
 	e.GET("/offchain_data/:id", fetchDocument)
+	e.GET("/offchain_data/_all_docs", fetchAllDocumentIDs)
 
 	// start server
 	url := ":" + strconv.Itoa(port)

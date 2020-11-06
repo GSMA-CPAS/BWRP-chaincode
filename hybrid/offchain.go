@@ -81,6 +81,7 @@ func initRoamingSmartContract() *RoamingSmartContract {
 }
 
 // GetRESTConfig returns the stored configuration for the rest endpoint
+// ACL restricted to local queries only
 func (s *RoamingSmartContract) GetRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
@@ -118,6 +119,7 @@ func (s *RoamingSmartContract) getLocalRESTConfig(ctx contractapi.TransactionCon
 }
 
 // SetRESTConfig stores the rest endpoint config
+// ACL restricted to local queries only
 func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextInterface) error {
 	log.Debugf("%s()", util.FunctionName())
 
@@ -460,10 +462,28 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	return string(dataJSON), nil
 }
 
-// FetchPrivateDocuments will return a list of the last n private documents
-// for now n=100, see offchain db adapter
+// FetchPrivateDocuments will return a list of the private documents
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) FetchPrivateDocuments(ctx contractapi.TransactionContextInterface) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
-	return "", nil //s.privateDocumentsAccess(ctx, "/documents")
+
+	// ACL restricted to local queries only
+	if !acl.LocalCall(ctx) {
+		return "", fmt.Errorf("access denied")
+	}
+
+	// fetch the configured rest endpoint
+	uri, err := s.getLocalRESTConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
+	}
+
+	// fetch from database
+	ids, err := util.OffchainDatabaseFetchAllDocumentIDs(uri)
+	if err != nil {
+		log.Errorf("db access failed. Error: %s", err.Error())
+		return "", err
+	}
+
+	return ids, nil
 }

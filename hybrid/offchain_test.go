@@ -158,6 +158,7 @@ func TestPrivateDocumentAccess(t *testing.T) {
 
 	// read private documents on ORG1 with ORG1 tx context
 	response, err := ep1.fetchPrivateDocuments(ep1)
+	os.Exit(0)
 	require.NoError(t, err)
 	log.Info(response)
 
