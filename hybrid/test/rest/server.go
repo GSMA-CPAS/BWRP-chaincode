@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,13 +32,19 @@ func storeData(c echo.Context) error {
 
 	// calc hash for return value
 	var document map[string]interface{}
-	json.Unmarshal(body, &document)
+	err := json.Unmarshal(body, &document)
+	if err != nil {
+		log.Error("failed to unmarshal JSON " + err.Error())
+		return err
+	}
+
 	data := document["data"].(string)
 	hash := sha256.Sum256([]byte(data))
 	hashs := hex.EncodeToString(hash[:])
+	log.Infof("done, hash is " + hashs)
 
 	// return the hash in the same way as the offchain-db-adapter
-	return c.String(http.StatusOK, hashs)
+	return c.String(http.StatusOK, `{"ok":true,"id":"`+id+`","rev":"1-ba8d8812afd2ba7be6c81c2e4c90e9c4"}`)
 }
 
 func fetchDocument(c echo.Context) error {
@@ -48,13 +55,15 @@ func fetchDocument(c echo.Context) error {
 	}
 
 	// access dummy db
+	log.Infof("accessing dummyDB[%s]", id)
 	val, knownHash := dummyDB[id]
 	if !knownHash {
 		log.Errorf("could not find id " + id + " in db")
-		return c.String(http.StatusInternalServerError, "id not found")
+		return c.String(http.StatusNotFound, `{"error":"not_found","reason":"missing"}`)
 	}
 
 	// return the data
+	log.Infof("ok, returning dummyDB[%s] = %s", id, val)
 	return c.String(http.StatusOK, val)
 }
 
@@ -108,15 +117,34 @@ func fetchDocumentID(c echo.Context) error {
 	return c.String(http.StatusInternalServerError, "id not found")
 }
 
+func returnOK(c echo.Context) error {
+	log.Info("==========================================================")
+	log.Info(c.Path())
+	log.Info("==========================================================")
+	return c.String(http.StatusOK, `{ "ok": true }`)
+}
+
 // StartServer will start a dummy rest server
 func StartServer(port int) {
+	// set loglevel
+	log.SetLevel(log.InfoLevel)
+
 	e := echo.New()
+	// enable this to see all requests
+	e.Debug = true
+	e.Use(middleware.Logger())
 
 	// define routes
-	e.PUT("/documents/:id", storeData)
-	e.GET("/documents/:id", fetchDocument)
-	e.GET("/documents", fetchDocuments)
-	e.GET("/documentIDs/:storageKey", fetchDocumentID)
+	//e.PUT("/documents/:id", storeData)
+	//e.GET("/documents/:id", fetchDocument)
+	//e.GET("/documents", fetchDocuments)
+	//e.GET("/documentIDs/:storageKey", fetchDocumentID)
+
+	e.GET("/offchain_data", returnOK)
+	e.HEAD("/offchain_data", returnOK)
+	e.HEAD("/offchain_data/:id", fetchDocument)
+	e.PUT("/offchain_data/:id", storeData)
+	e.GET("/offchain_data/:id", fetchDocument)
 
 	// start server
 	url := ":" + strconv.Itoa(port)

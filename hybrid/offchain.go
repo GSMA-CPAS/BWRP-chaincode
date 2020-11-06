@@ -23,14 +23,11 @@
 package main
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"net/http"
+	"hybrid/util"
 	"os"
 	"strconv"
 	"time"
@@ -143,14 +140,15 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 		return fmt.Errorf("uri not found in the transient map")
 	}
 
-	// store data in implicit collection
-	return ctx.GetStub().PutPrivateData(implicitCollection, "REST_URI", uri)
-
-	// do wee need to initialise the db?
-	err = util.prepareOffchainDatabase(uri)
+	// store config data in implicit collection
+	err = ctx.GetStub().PutPrivateData(implicitCollection, "REST_URI", uri)
 	if err != nil {
 		return err
 	}
+
+	// do wee need to initialise the db?
+	err = util.OffchainDatabasePrepare(string(uri))
+	return err
 }
 
 // GetEvaluateTransactions returns functions of RoamingSmartContract to be tagged as evaluate (=query)
@@ -369,14 +367,12 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	dataHash := hex.EncodeToString(sha256[:])
 
 	// create rest struct
-	var document RESTDocument
-	document.ID = documentID
+	var document = util.OffchainData{}
 	document.TimeStamp = strconv.FormatInt(time.Now().UnixNano(), 10)
 	document.Data = documentBase64
 	document.DataHash = dataHash
 	document.FromMSP = invokingMSPID
 	document.ToMSP = targetMSPID
-	documentJSON, err := json.Marshal(document)
 
 	if err != nil {
 		log.Errorf("failed to marshal json")
@@ -384,46 +380,19 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// fetch the configured rest endpoint
-	baseURL, err := s.getLocalRESTConfig(ctx)
+	uri, err := s.getLocalRESTConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
 	}
 
-	// offchain-db-adapter target url
-	url := baseURL + "/documents/" + documentID
-	log.Infof("will send PUT request to %s", url)
-
-	client := &http.Client{}
-	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(documentJSON))
+	// store data in offchain db
+	storedDataHash, err := util.OffchainDatabaseStore(uri, documentID, document)
 	if err != nil {
-		log.Errorf("REST request failed to create request. Error: %s", err.Error())
+		log.Error("failed to store data: " + err.Error())
 		return "", err
 	}
 
-	// set the request header Content-Type for json
-	req.Header.Set("Content-Type", "application/json")
-	response, err := client.Do(req)
-
-	if err != nil {
-		log.Errorf("REST request failed. Error: %s", err.Error())
-		return "", err
-	}
-
-	log.Infof("got response status %s", response.Status)
-	if response.StatusCode != 200 {
-		log.Errorf("REST request on %s failed. Status: %s", url, response.Status)
-		return "", fmt.Errorf("REST request on %s failed. Status: %s", url, response.Status)
-	}
-
-	body, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Errorf("failed to decode body (status = %s, header = %s)", response.Status, response.Header)
-		return "", err
-	}
-
-	// fetch returned hash of the data
-	storedDataHash := string(body)
-	log.Infof("got response body, stored data hash %s", storedDataHash)
+	log.Infof("stored data ok. saved data hash %s", storedDataHash)
 
 	// verify that the hash from the post request matches our data
 	if dataHash != storedDataHash {
@@ -437,118 +406,98 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 // FetchPrivateDocument will return a private document identified by its documentID
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) (string, error) {
-	log.Infof("fetching document with id " + documentID)
-	return s.privateDocumentsAccess(ctx, "/documents/"+documentID)
+	// get the calling MSP
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		log.Errorf("failed to fetch MSPID: %s", err.Error())
+		return "", err
+	}
+
+	log.Infof(invokingMSPID + " accessing private document with id " + documentID)
+
+	// verify that this is a local call
+	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
+		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
+		return "", fmt.Errorf("access denied")
+	}
+
+	// fetch the configured rest endpoint
+	uri, err := s.getLocalRESTConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
+	}
+
+	// fetch from database
+	data, err := util.OffchainDatabaseFetch(uri, documentID)
+
+	if err != nil {
+		log.Errorf("db access failed. Error: %s", err.Error())
+		return "", err
+	}
+
+	// return result
+	return string(data), nil
 }
 
 // FetchPrivateDocuments will return a list of the last n private documents
 // for now n=100, see offchain db adapter
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) FetchPrivateDocuments(ctx contractapi.TransactionContextInterface) (string, error) {
-	return s.privateDocumentsAccess(ctx, "/documents")
-}
-
-func (s *RoamingSmartContract) privateDocumentsAccess(ctx contractapi.TransactionContextInterface, path string) (string, error) {
-	// get the calling MSP
-	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
-	if err != nil {
-		log.Errorf("failed to fetch MSPID: %s", err.Error())
-		return "", err
-	}
-
-	log.Infof(invokingMSPID + " accessing private documents via path " + path)
-
-	// verify that this is a local call
-	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
-		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
-		return "", fmt.Errorf("access denied")
-	}
-
-	// fetch the configured rest endpoint
-	baseURL, err := s.getLocalRESTConfig(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
-	}
-
-	// offchain-db-adapter target url
-	url := baseURL + path
-	log.Infof("will send GET request to %s", url)
-
-	response, err := http.Get(url)
-
-	if err != nil {
-		log.Errorf("REST request failed. Error: %s", err.Error())
-		return "", err
-	}
-
-	log.Infof("got response status %s", response.Status)
-	if response.StatusCode != 200 {
-		log.Errorf("REST request on %s failed. Status: %s, Body = %s", url, response.Status, response.Body)
-		// NOTE: returning detailled error messages here is safe as this function
-		//       is only called locally (see check above). DO NOT expose sensitive information in other calls.
-		return "", fmt.Errorf("REST request on %s failed: Status = %s, Body = %s", url, response.Status, response.Body)
-	}
-
-	body, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Errorf("failed to decode body (status = %s, header = %s)", response.Status, response.Header)
-		return "", err
-	}
-
-	// return result
-	return string(body), nil
+	return "", nil //s.privateDocumentsAccess(ctx, "/documents")
 }
 
 // GetDocumentID will return a private documentID based on a storageKey
 // This only works for documentIDs known to this MSP
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) GetDocumentID(ctx contractapi.TransactionContextInterface, storageKey string) (string, error) {
-	log.Infof("fetching documentID for storageKey " + storageKey)
+	return "ERROR_NOT_IMPL", nil
+	/*
+		log.Infof("fetching documentID for storageKey " + storageKey)
 
-	// get the calling MSP
-	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
-	if err != nil {
-		log.Errorf("failed to fetch MSPID: %s", err.Error())
-		return "", err
-	}
+		// get the calling MSP
+		invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+		if err != nil {
+			log.Errorf("failed to fetch MSPID: %s", err.Error())
+			return "", err
+		}
 
-	// verify that this is a local call
-	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
-		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
-		return "", fmt.Errorf("access denied")
-	}
+		// verify that this is a local call
+		if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
+			log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
+			return "", fmt.Errorf("access denied")
+		}
 
-	// fetch the configured rest endpoint
-	baseURL, err := s.getLocalRESTConfig(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
-	}
+		// fetch the configured rest endpoint
+		baseURL, err := s.getLocalRESTConfig(ctx)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
+		}
 
-	// offchain-db-adapter target url
-	url := baseURL + "/documentIDs/" + storageKey
-	log.Infof("will send GET request to %s", url)
+		// offchain-db-adapter target url
+		url := baseURL + "/documentIDs/" + storageKey
+		log.Infof("will send GET request to %s", url)
 
-	response, err := http.Get(url)
+		response, err := http.Get(url)
 
-	if err != nil {
-		log.Errorf("REST request failed. Error: %s", err.Error())
-		return "", err
-	}
+		if err != nil {
+			log.Errorf("REST request failed. Error: %s", err.Error())
+			return "", err
+		}
 
-	log.Infof("got response status %s", response.Status)
-	if response.StatusCode != 200 {
-		log.Errorf("REST request on %s failed. Status: %s, Body = %s", url, response.Status, response.Body)
-		// NOTE: returning detailled error messages here is safe as this function
-		//       is only called locally (see check above). DO NOT expose sensitive information in other calls.
-		return "", fmt.Errorf("REST request on %s failed: Status = %s, Body = %s", url, response.Status, response.Body)
-	}
+		log.Infof("got response status %s", response.Status)
+		if response.StatusCode != 200 {
+			log.Errorf("REST request on %s failed. Status: %s, Body = %s", url, response.Status, response.Body)
+			// NOTE: returning detailled error messages here is safe as this function
+			//       is only called locally (see check above). DO NOT expose sensitive information in other calls.
+			return "", fmt.Errorf("REST request on %s failed: Status = %s, Body = %s", url, response.Status, response.Body)
+		}
 
-	body, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Errorf("failed to decode body (status = %s, header = %s)", response.Status, response.Header)
-		return "", err
-	}
+		body, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			log.Errorf("failed to decode body (status = %s, header = %s)", response.Status, response.Header)
+			return "", err
+		}
 
-	// return result
-	return string(body), nil
+		// return result
+		return string(body), nil*/
 }
