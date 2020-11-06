@@ -1,4 +1,4 @@
-package rest
+package couchdb_dummy
 
 import (
 	"crypto/sha256"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -14,7 +15,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var dummyDB = make(map[string]string)
+// dummy database:
+// dummydb[hostname][id] = data
+var dummyDB = map[string]map[string]string{}
 
 func storeData(c echo.Context) error {
 	body, _ := ioutil.ReadAll(c.Request().Body)
@@ -26,9 +29,15 @@ func storeData(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(id))+`" }`)
 	}
 
+	_, knownHash := dummyDB[c.Echo().Server.Addr]
+	if !knownHash {
+		log.Infof("could not find host " + c.Echo().Server.Addr + " in db")
+		os.Exit(0)
+	}
+
 	//store data
-	log.Infof("DB[%s] = %s", id, string(body))
-	dummyDB[id] = string(body)
+	log.Infof("DB[%s][%s] = %s", c.Echo().Server.Addr, id, string(body))
+	dummyDB[c.Echo().Server.Addr][id] = string(body)
 
 	// calc hash for return value
 	var document map[string]interface{}
@@ -55,10 +64,10 @@ func fetchDocument(c echo.Context) error {
 	}
 
 	// access dummy db
-	log.Infof("accessing dummyDB[%s]", id)
-	val, knownHash := dummyDB[id]
+	log.Infof("accessing dummyDB[%s][%s]", c.Echo().Server.Addr, id)
+	val, knownHash := dummyDB[c.Echo().Server.Addr][id]
 	if !knownHash {
-		log.Errorf("could not find id " + id + " in db")
+		log.Infof("could not find id " + id + " in db")
 		return c.String(http.StatusNotFound, `{"error":"not_found","reason":"missing"}`)
 	}
 
@@ -71,7 +80,7 @@ func fetchDocuments(c echo.Context) error {
 	var documents map[string]map[string]interface{}
 	documents = make(map[string]map[string]interface{})
 
-	for id, data := range dummyDB {
+	for id, data := range dummyDB[c.Echo().Server.Addr] {
 		var document map[string]interface{}
 		json.Unmarshal([]byte(data), &document)
 
@@ -97,7 +106,7 @@ func fetchDocumentID(c echo.Context) error {
 
 	// access dummy db
 	// loop through all (inefficient but good enough for this test)
-	for id, data := range dummyDB {
+	for id, data := range dummyDB[c.Echo().Server.Addr] {
 		var document map[string]interface{}
 		json.Unmarshal([]byte(data), &document)
 
@@ -118,17 +127,11 @@ func fetchDocumentID(c echo.Context) error {
 }
 
 func returnOK(c echo.Context) error {
-	log.Info("==========================================================")
-	log.Info(c.Path())
-	log.Info("==========================================================")
 	return c.String(http.StatusOK, `{ "ok": true }`)
 }
 
 // StartServer will start a dummy rest server
 func StartServer(port int) {
-	// set loglevel
-	log.SetLevel(log.InfoLevel)
-
 	e := echo.New()
 	// enable this to see all requests
 	e.Debug = true
@@ -149,6 +152,10 @@ func StartServer(port int) {
 	// start server
 	url := ":" + strconv.Itoa(port)
 	log.Info("will listen on " + url)
+
+	// add dummydb
+	dummyDB[url] = make(map[string]string)
+
 	go func() {
 		err := e.Start(url)
 		if err != nil {

@@ -1,7 +1,7 @@
 /*
 	Chaincode POC
 	- hybrid approach
-	- offchain data storage (REST interface)
+	- offchain data storage
 	- hidden communication on chain (only partners can derive storage location)
 	- hlf composite keys for storage
 
@@ -26,7 +26,9 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"hybrid/acl"
 	"hybrid/util"
 	"os"
 	"strconv"
@@ -37,23 +39,16 @@ import (
 )
 
 const compositeKeyDefinition string = "owner~type~key~txid"
-
-// RESTDocument struct as passed to the rest interface
-type RESTDocument struct {
-	FromMSP   string `json:"fromMSP"`
-	ToMSP     string `json:"toMSP"`
-	Data      string `json:"data"`
-	DataHash  string `json:"dataHash"`
-	TimeStamp string `json:"timeStamp"`
-	ID        string `json:"id"`
-}
+const enableDebug = true
 
 func main() {
-	// set loglevel
-	log.SetLevel(log.DebugLevel)
+	if enableDebug {
+		// set loglevel
+		log.SetLevel(log.DebugLevel)
+	}
 
 	// instantiate chaincode
-	roamingChaincode := new(RoamingSmartContract)
+	roamingChaincode := initRoamingSmartContract()
 	chaincode, err := contractapi.NewChaincode(roamingChaincode)
 	if err != nil {
 		log.Panicf("failed to create chaincode: %s", err.Error())
@@ -72,19 +67,28 @@ type RoamingSmartContract struct {
 	contractapi.Contract
 }
 
-// GetRESTConfig returns the stored configuration for the rest endpoint
-// ACL restricted to local queries only
-func (s *RoamingSmartContract) GetRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
-	// get caller msp
-	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
-	if err != nil {
-		return "", err
+var contract *RoamingSmartContract
+
+func initRoamingSmartContract() *RoamingSmartContract {
+	if contract != nil {
+		return contract
 	}
-	// verify that this is a local call
-	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
-		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
+
+	var newContract = RoamingSmartContract{}
+	contract = &newContract
+
+	return contract
+}
+
+// GetRESTConfig returns the stored configuration for the rest endpoint
+func (s *RoamingSmartContract) GetRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
+
+	// ACL restricted to local queries only
+	if !acl.LocalCall(ctx) {
 		return "", fmt.Errorf("access denied")
 	}
+
 	config, err := s.getLocalRESTConfig(ctx)
 
 	return config, err
@@ -95,6 +99,8 @@ func (s *RoamingSmartContract) GetRESTConfig(ctx contractapi.TransactionContextI
 // NOTE: (1) DO NOT expose this as it might leak sensitive network configuration use GetRESTConfig for this.
 //       (2) always use the LOCALMSPID implicit collection here as we need the configuration of _this_ peer
 func (s *RoamingSmartContract) getLocalRESTConfig(ctx contractapi.TransactionContextInterface) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
+
 	// the getter will always use the local collection where this chaincode runs
 	implicitCollection := "_implicit_org_" + os.Getenv("CORE_PEER_LOCALMSPID")
 
@@ -113,16 +119,17 @@ func (s *RoamingSmartContract) getLocalRESTConfig(ctx contractapi.TransactionCon
 
 // SetRESTConfig stores the rest endpoint config
 func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextInterface) error {
+	log.Debugf("%s()", util.FunctionName())
+
+	// ACL restricted to local queries only
+	if !acl.LocalCall(ctx) {
+		fmt.Errorf("access denied")
+	}
+
 	// get caller msp
 	mspID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
 		return err
-	}
-
-	// verify that this is a local call
-	if mspID != os.Getenv("CORE_PEER_LOCALMSPID") {
-		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", mspID)
-		return fmt.Errorf("access denied")
 	}
 
 	// the setter will always set the collection that he owns!
@@ -160,6 +167,8 @@ func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
 func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionContextInterface) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
+
 	// TODO: verify that the golang crypto lib returns random numbers that are good enough to be used here!
 	rand32 := make([]byte, 32)
 	_, err := rand.Read(rand32)
@@ -197,6 +206,8 @@ func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionConte
 
 // CreateStorageKey returns the hidden key used for hidden communication based on a documentID and the targetMSP
 func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentID string) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
+
 	if len(documentID) != 64 {
 		return "", fmt.Errorf("invalid input: size of documentID is invalid: %d != 64", len(documentID))
 	}
@@ -209,6 +220,8 @@ func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentID s
 
 // GetSignatures returns all signatures stored in the ledger for this key
 func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, key string) (map[string]string, error) {
+	log.Debugf("%s()", util.FunctionName())
+
 	// query results for composite key without identity
 	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(compositeKeyDefinition, []string{targetMSPID, "SIGNATURE", key})
 
@@ -250,6 +263,8 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 // GetStorageLocation returns the storage location for
 // a given storageType and key by using the composite key feature
 func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType string, key string) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
+
 	// get the calling MSP
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
@@ -275,6 +290,8 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 
 // storeData stores given data with a given type on the ledger
 func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
+	log.Debugf("%s()", util.FunctionName())
+
 	// get the calling MSP
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
@@ -328,11 +345,13 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 
 // StoreSignature stores a given signature on the ledger
 func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContextInterface, key string, signatureJSON string) error {
+	log.Debugf("%s()", util.FunctionName())
 	return s.storeData(ctx, key, "SIGNATURE", []byte(signatureJSON))
 }
 
 // StoreDocumentHash stores a given document hash on the ledger
 func (s *RoamingSmartContract) StoreDocumentHash(ctx contractapi.TransactionContextInterface, key string, documentHash string) error {
+	log.Debugf("%s()", util.FunctionName())
 	return s.storeData(ctx, key, "DOCUMENTHASH", []byte(documentHash))
 }
 
@@ -340,6 +359,8 @@ func (s *RoamingSmartContract) StoreDocumentHash(ctx contractapi.TransactionCont
 // this can be called on a remote peer or locally
 // payload is a DataPayload object that contains a nonce and the payload
 func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, documentID string, documentBase64 string) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
+
 	// verify passed data
 	if len(documentID) != 64 {
 		return "", fmt.Errorf("invalid input: size of documentID is invalid: %d != 64", len(documentID))
@@ -406,20 +427,14 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 // FetchPrivateDocument will return a private document identified by its documentID
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) (string, error) {
-	// get the calling MSP
-	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
-	if err != nil {
-		log.Errorf("failed to fetch MSPID: %s", err.Error())
-		return "", err
-	}
+	log.Debugf("%s()", util.FunctionName())
 
-	log.Infof(invokingMSPID + " accessing private document with id " + documentID)
-
-	// verify that this is a local call
-	if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
-		log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
+	// ACL restricted to local queries only
+	if !acl.LocalCall(ctx) {
 		return "", fmt.Errorf("access denied")
 	}
+
+	log.Infof("accessing private document with id " + documentID)
 
 	// fetch the configured rest endpoint
 	uri, err := s.getLocalRESTConfig(ctx)
@@ -429,75 +444,26 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 
 	// fetch from database
 	data, err := util.OffchainDatabaseFetch(uri, documentID)
-
 	if err != nil {
 		log.Errorf("db access failed. Error: %s", err.Error())
 		return "", err
 	}
 
+	// convert to json:
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		log.Errorf("failed to convert data from db to json: %s", err.Error())
+		return "", err
+	}
+
 	// return result
-	return string(data), nil
+	return string(dataJSON), nil
 }
 
 // FetchPrivateDocuments will return a list of the last n private documents
 // for now n=100, see offchain db adapter
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) FetchPrivateDocuments(ctx contractapi.TransactionContextInterface) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
 	return "", nil //s.privateDocumentsAccess(ctx, "/documents")
-}
-
-// GetDocumentID will return a private documentID based on a storageKey
-// This only works for documentIDs known to this MSP
-// ACL restricted to local queries only
-func (s *RoamingSmartContract) GetDocumentID(ctx contractapi.TransactionContextInterface, storageKey string) (string, error) {
-	return "ERROR_NOT_IMPL", nil
-	/*
-		log.Infof("fetching documentID for storageKey " + storageKey)
-
-		// get the calling MSP
-		invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
-		if err != nil {
-			log.Errorf("failed to fetch MSPID: %s", err.Error())
-			return "", err
-		}
-
-		// verify that this is a local call
-		if invokingMSPID != os.Getenv("CORE_PEER_LOCALMSPID") {
-			log.Errorf("ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
-			return "", fmt.Errorf("access denied")
-		}
-
-		// fetch the configured rest endpoint
-		baseURL, err := s.getLocalRESTConfig(ctx)
-		if err != nil {
-			return "", fmt.Errorf("failed to fetch REST uri: %s", err.Error())
-		}
-
-		// offchain-db-adapter target url
-		url := baseURL + "/documentIDs/" + storageKey
-		log.Infof("will send GET request to %s", url)
-
-		response, err := http.Get(url)
-
-		if err != nil {
-			log.Errorf("REST request failed. Error: %s", err.Error())
-			return "", err
-		}
-
-		log.Infof("got response status %s", response.Status)
-		if response.StatusCode != 200 {
-			log.Errorf("REST request on %s failed. Status: %s, Body = %s", url, response.Status, response.Body)
-			// NOTE: returning detailled error messages here is safe as this function
-			//       is only called locally (see check above). DO NOT expose sensitive information in other calls.
-			return "", fmt.Errorf("REST request on %s failed: Status = %s, Body = %s", url, response.Status, response.Body)
-		}
-
-		body, err := ioutil.ReadAll(response.Body)
-		if err != nil {
-			log.Errorf("failed to decode body (status = %s, header = %s)", response.Status, response.Header)
-			return "", err
-		}
-
-		// return result
-		return string(body), nil*/
 }

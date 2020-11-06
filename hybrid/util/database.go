@@ -19,8 +19,7 @@ const offchainDatabaseName = "offchain_data"
 
 // OffchainDatabasePrepare checks wether the offchain db exists and initializes it if necessary
 func OffchainDatabasePrepare(uri string) error {
-	// set loglevel
-	log.SetLevel(log.InfoLevel)
+	log.Debugf("%s()", FunctionName())
 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
@@ -44,8 +43,7 @@ func OffchainDatabasePrepare(uri string) error {
 
 // OffchainDatabaseStore stores data in the database
 func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (string, error) {
-	// set loglevel
-	log.SetLevel(log.InfoLevel)
+	log.Debugf("%s()", FunctionName())
 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
@@ -97,36 +95,38 @@ func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (st
 }
 
 // OffchainDatabaseFetch fetch data from the database
-func OffchainDatabaseFetch(uri string, documentID string) ([]byte, error) {
-	// set loglevel
-	log.SetLevel(log.InfoLevel)
+func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) {
+	log.Debugf("%s()", FunctionName())
+
+	// prepare data object
+	var storedData = OffchainData{}
 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
 	if err != nil {
 		log.Error("failed to access couchdb: " + err.Error())
-		return nil, err
+		return storedData, err
 	}
 
 	// open db
 	db, err := conn.Get(offchainDatabaseName)
 	if err != nil {
 		log.Error("failed to open database: " + err.Error())
-		return nil, err
+		return storedData, err
 	}
 
 	// check if document already exists:
 	err = db.Contains(documentID)
 	if err != nil {
 		log.Error("failed to query document. documentID unknown")
-		return nil, fmt.Errorf("failed to query document. documentID unknown %s", err.Error())
+		return storedData, fmt.Errorf("failed to query document. documentID unknown %s", err.Error())
 	}
 
 	// query data
-	storedData, err := db.GetAttachmentID(documentID, "data")
+	err = couchdb.Load(db, documentID, &storedData)
 	if err != nil {
 		log.Error("failed to query document: " + err.Error())
-		return nil, err
+		return storedData, err
 	}
 
 	return storedData, nil
