@@ -11,5 +11,6 @@ type OffchainData struct {
 	Data      string `json:"data"`
 	DataHash  string `json:"dataHash"`
 	TimeStamp string `json:"timeStamp"`
+	Id        string `json:"id"`
 	couchdb.Document
 }

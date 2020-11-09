@@ -465,12 +465,17 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 		return "", err
 	}
 
+	// copy ID
+	data.Id = data.ID
+
 	// convert to json:
 	dataJSON, err := json.Marshal(data)
 	if err != nil {
 		log.Errorf("failed to convert data from db to json: %v", err)
 		return "", err
 	}
+
+	//`json:"-"`
 
 	// return result
 	return string(dataJSON), nil
