@@ -6,10 +6,10 @@ package data
 
 // Organization handles some dummy definitions for testing
 type Organization struct {
-	Name           string
-	Certificate    []byte
-	PrivateKey     []byte
-	RestConfigPort int
+	Name                string
+	Certificate         []byte
+	PrivateKey          []byte
+	OffchainDBConfigURI string
 }
 
 // ORG1 is dummy organization 1
@@ -36,7 +36,7 @@ EGHHf6ONlRFKDqvcZOOFxBd9X/S/Fr4GMOuhpzA6WEaLMSehZANiAATZ4BKcxPAj
 0txG1CStZZYr5QA/C1DmrBrTofor+bx9Tr6HYEfehE4zjzAzWAl0W6v+WGtgXBKU
 k83ZHME5dlXD0gW9dqkRsNqp5dKBJZ3kQg041OYEqkbXbBOjAKa2AQE=
 -----END PRIVATE KEY-----`),
-	RestConfigPort: 3001}
+	OffchainDBConfigURI: "localhost:3001"}
 
 // ORG2 is dummy organization 2
 var ORG2 = Organization{
@@ -62,4 +62,4 @@ MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDDREKNtlcGv4pFBA8KQ
 UqLsKq+Fn156LPiBYS/uTC01NatLjJoGr/WTAC2iObEeqb26PMttefKVUHNZ55VC
 z7s4g3LAwGjDAOiaHv418VRsbDrd7Z+mzLfpTkvVTT6IDofYoNp8CUk=
 -----END PRIVATE KEY-----`),
-	RestConfigPort: 3002}
+	OffchainDBConfigURI: "localhost:3002"}

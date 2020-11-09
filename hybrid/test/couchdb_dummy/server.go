@@ -1,4 +1,4 @@
-package couchdb_dummy
+package couchdb
 
 import (
 	"crypto/sha256"
@@ -133,7 +133,7 @@ func fetchAllDocumentIDs(c echo.Context) error {
 	// build dummy response
 	var response string = `{"rows":[`
 	var rowCount = 0
-	for key, _ := range db {
+	for key := range db {
 		if rowCount > 0 {
 			response += `, `
 		}
@@ -151,7 +151,7 @@ func returnOK(c echo.Context) error {
 }
 
 // StartServer will start a dummy rest server
-func StartServer(port int) {
+func StartServer(uri string) {
 	e := echo.New()
 	// enable this to see all requests
 	e.Debug = true
@@ -170,15 +170,13 @@ func StartServer(port int) {
 	e.GET("/offchain_data/:id", fetchDocument)
 	e.GET("/offchain_data/_all_docs", fetchAllDocumentIDs)
 
-	// start server
-	url := ":" + strconv.Itoa(port)
-	log.Info("will listen on " + url)
-
 	// add dummydb
-	dummyDB[url] = make(map[string]string)
+	dummyDB[uri] = make(map[string]string)
 
+	// start server
+	log.Info("will listen on " + uri)
 	go func() {
-		err := e.Start(url)
+		err := e.Start(uri)
 		if err != nil {
 			log.Panic(err)
 		}

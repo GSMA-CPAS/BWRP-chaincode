@@ -5,13 +5,12 @@ package main
 import (
 	"encoding/json"
 	"hybrid/test/chaincode"
-	rest "hybrid/test/couchdb_dummy"
+	couchdb "hybrid/test/couchdb_dummy"
 	. "hybrid/test/data"
 	"hybrid/test/historyshimtest"
 	"hybrid/test/mocks"
 	"hybrid/util"
 	"os"
-	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -57,10 +56,10 @@ func (local Endpoint) createStorageKey(caller Endpoint, targetMSPID string, docu
 	return local.contract.CreateStorageKey(targetMSPID, documentID) // TODO: no tx context in this func?!
 }
 
-func (local Endpoint) getRESTConfig(caller Endpoint) (string, error) {
+func (local Endpoint) getOffchainDBConfig(caller Endpoint) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.GetRESTConfig(caller.txContext)
+	return local.contract.GetOffchainDBConfig(caller.txContext)
 }
 
 func (local Endpoint) createDocumentID(caller Endpoint) (string, error) {
@@ -112,15 +111,15 @@ func createEndpoints(t *testing.T) (Endpoint, Endpoint) {
 func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Organization) Endpoint {
 	var ep Endpoint
 	ep.org = &org
-	log.Infof(ep.org.Name + ": configuring rest endpoint")
+	log.Infof(ep.org.Name + ": configuring endpoint, setting up db connection")
 
 	// store mockstub
 	ep.stub = mockStub
 
 	// set up local msp id
 	os.Setenv("CORE_PEER_LOCALMSPID", ep.org.Name)
-	//start a simple rest servers to handle requests from chaincode
-	rest.StartServer(ep.org.RestConfigPort)
+	//start a couchdb dummy server to handle requests from chaincode
+	couchdb.StartServer(ep.org.OffchainDBConfigURI)
 	// init contract
 	ep.contract = initRoamingSmartContract()
 
@@ -131,20 +130,20 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	// use context
 	ep.txContext = txContext
 
-	// set transient data for setting rest config
+	// set transient data for setting couchdb config
 	var transient map[string][]byte
 	transient = make(map[string][]byte)
-	targetURI := "http://localhost:" + strconv.Itoa(ep.org.RestConfigPort)
-	transient["uri"] = []byte(targetURI)
+	url := "http://" + ep.org.OffchainDBConfigURI
+	transient["uri"] = []byte(url)
 	mockStub.TransientMap = transient
-	err = ep.contract.SetRESTConfig(ep.txContext)
+	err = ep.contract.SetOffchainDBConfig(ep.txContext)
 	require.NoError(t, err)
 
 	// read back for debugging and testing
-	uri, err := ep.contract.GetRESTConfig(ep.txContext)
+	uri, err := ep.contract.GetOffchainDBConfig(ep.txContext)
 	log.Infof(ep.org.Name+": read back uri <%s>\n", uri)
 	require.NoError(t, err)
-	require.EqualValues(t, uri, targetURI)
+	require.EqualValues(t, uri, url)
 	return ep
 }
 
@@ -167,9 +166,9 @@ func TestPrivateDocumentAccess(t *testing.T) {
 	log.Info(response)
 }
 
-func TestRestConfig(t *testing.T) {
+func TestOffchainDBConfig(t *testing.T) {
 	log.Infof("################################################################################")
-	log.Infof("running test TestRestConfig")
+	log.Infof("running test TestOffchainDBConfig")
 	log.Infof("################################################################################")
 
 	// set up proper endpoints
@@ -177,14 +176,14 @@ func TestRestConfig(t *testing.T) {
 
 	// read back for debugging
 	// note that this is not allowed on chaincode calls
-	// as getRESTConfig is not exported
+	// as getOffchainDBConfig is not exported
 	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
-	uri, err := ep1.getRESTConfig(ep1)
+	uri, err := ep1.getOffchainDBConfig(ep1)
 	require.NoError(t, err)
 	log.Infof("read back uri <%s>\n", uri)
 
 	// read back with txcontext ORG2 -> this has to fail!
-	_, err = ep1.getRESTConfig(ep2)
+	_, err = ep1.getOffchainDBConfig(ep2)
 	require.Error(t, err)
 }
 
