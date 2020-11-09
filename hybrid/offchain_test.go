@@ -44,6 +44,12 @@ func (local Endpoint) fetchPrivateDocument(caller Endpoint, documentID string) (
 	return local.contract.FetchPrivateDocument(caller.txContext, documentID)
 }
 
+func (local Endpoint) deletePrivateDocument(caller Endpoint, documentID string) error {
+	log.Debugf("%s()", util.FunctionName())
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.DeletePrivateDocument(caller.txContext, documentID)
+}
+
 func (local Endpoint) fetchPrivateDocumentIDs(caller Endpoint) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
@@ -149,7 +155,7 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 
 func TestPrivateDocumentAccess(t *testing.T) {
 	log.Infof("################################################################################")
-	log.Infof("running test TestPrivateDocumentAccess")
+	log.Infof("running test " + util.FunctionName())
 	log.Infof("################################################################################")
 
 	// set up proper endpoints
@@ -168,7 +174,7 @@ func TestPrivateDocumentAccess(t *testing.T) {
 
 func TestOffchainDBConfig(t *testing.T) {
 	log.Infof("################################################################################")
-	log.Infof("running test TestOffchainDBConfig")
+	log.Infof("running test " + util.FunctionName())
 	log.Infof("################################################################################")
 
 	// set up proper endpoints
@@ -189,7 +195,7 @@ func TestOffchainDBConfig(t *testing.T) {
 
 func TestExchangeAndSigning(t *testing.T) {
 	log.Infof("################################################################################")
-	log.Infof("running test TestExchangeAndSigning")
+	log.Infof("running test " + util.FunctionName())
 	log.Infof("################################################################################")
 
 	// set up proper endpoints
@@ -268,4 +274,38 @@ func TestExchangeAndSigning(t *testing.T) {
 	signatures, err = ep2.getSignatures(ep2, ORG1.Name, storagekeypartnerORG1)
 	require.NoError(t, err)
 	chaincode.PrintSignatureResponse(signatures)
+}
+
+func TestDocumentDelete(t *testing.T) {
+	log.Infof("################################################################################")
+	log.Infof("running test " + util.FunctionName())
+	log.Infof("################################################################################")
+
+	// set up proper endpoints
+	ep1, ep2 := createEndpoints(t)
+
+	// calc documentID
+	documentID, err := ep1.createDocumentID(ep2)
+	require.NoError(t, err)
+	log.Infof("got docID <%s>\n", documentID)
+
+	// QUERY store document on ORG1 (local)
+	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, documentID, ExampleDocument.Data64)
+	require.NoError(t, err)
+	require.EqualValues(t, hash, ExampleDocument.Hash)
+
+	// VERIFY that it was written
+	ids, err := ep1.fetchPrivateDocumentIDs(ep1)
+	require.NoError(t, err)
+	require.EqualValues(t, `["`+documentID+`"]`, ids)
+
+	// delete
+	err = ep1.deletePrivateDocument(ep1, documentID)
+	require.NoError(t, err)
+
+	// VERIFY that it was removed
+	ids, err = ep1.fetchPrivateDocumentIDs(ep1)
+	require.NoError(t, err)
+	require.EqualValues(t, `[]`, ids)
+
 }

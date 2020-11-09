@@ -76,6 +76,29 @@ func fetchDocument(c echo.Context) error {
 	return c.String(http.StatusOK, val)
 }
 
+func deleteDocument(c echo.Context) error {
+	// extract id
+	id := c.Param("id")
+	if len(id) != 64 {
+		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(id))+`" }`)
+	}
+
+	// access dummy db
+	log.Infof("accessing dummyDB[%s][%s]", c.Echo().Server.Addr, id)
+	val, knownHash := dummyDB[c.Echo().Server.Addr][id]
+	if !knownHash {
+		log.Infof("could not find id " + id + " in db")
+		return c.String(http.StatusNotFound, `{"error":"not_found","reason":"missing"}`)
+	}
+
+	// delete the data
+	log.Infof("ok, deleting dummyDB[%s] = %s", id, val)
+	// delete does not return any data
+	delete(dummyDB[c.Echo().Server.Addr], id)
+
+	return c.String(http.StatusOK, `{"ok":true`)
+}
+
 func fetchDocuments(c echo.Context) error {
 	var documents map[string]map[string]interface{}
 	documents = make(map[string]map[string]interface{})
@@ -168,6 +191,7 @@ func StartServer(uri string) {
 	e.HEAD("/offchain_data/:id", fetchDocument)
 	e.PUT("/offchain_data/:id", storeData)
 	e.GET("/offchain_data/:id", fetchDocument)
+	e.DELETE("/offchain_data/:id", deleteDocument)
 	e.GET("/offchain_data/_all_docs", fetchAllDocumentIDs)
 
 	// add dummydb
