@@ -41,6 +41,17 @@ import (
 const compositeKeyDefinition string = "owner~type~key~txid"
 const enableDebug = true
 
+/*const (
+	// ErrNotModified for HTTP status code 304
+	ErrNotModified = errors.New("status 304 - not modified")
+	// ErrBadRequest for HTTP status code 400
+	ErrBadRequest = errors.New("status 400 - bad request")
+	// ErrUnauthorized for HTTP status code 401
+	ErrUnauthorized = errors.New("status 401 - unauthorized")
+	// ErrForbidden for HTTP status code 403
+	ErrForbidden = errors.New("status 403 - forbidden")
+)*/
+
 func main() {
 	if enableDebug {
 		// set loglevel
@@ -164,7 +175,7 @@ func (s *RoamingSmartContract) SetRESTConfig(ctx contractapi.TransactionContextI
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"GetRESTConfig", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocuments"}
+	return []string{"GetRESTConfig", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
 }
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
@@ -462,9 +473,38 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	return string(dataJSON), nil
 }
 
-// FetchPrivateDocuments will return a list of the private documents
+// DeletePrivateDocument will delete a private document identified by its documentID from the database
 // ACL restricted to local queries only
-func (s *RoamingSmartContract) FetchPrivateDocuments(ctx contractapi.TransactionContextInterface) (string, error) {
+func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) error {
+	log.Debugf("%s()", util.FunctionName())
+
+	// ACL restricted to local queries only
+	if !acl.LocalCall(ctx) {
+		return fmt.Errorf("access denied")
+	}
+
+	log.Infof("deleting private document with id " + documentID)
+
+	// fetch the configured rest endpoint
+	uri, err := s.getLocalRESTConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch REST uri: %s", err.Error())
+	}
+
+	// fetch from database
+	err = util.OffchainDatabaseDelete(uri, documentID)
+	if err != nil {
+		log.Errorf("db delete access failed. Error: %s", err.Error())
+		return err
+	}
+
+	// all fine
+	return nil
+}
+
+// FetchPrivateDocumentIDs will return a list of IDS of the private documents
+// ACL restricted to local queries only
+func (s *RoamingSmartContract) FetchPrivateDocumentIDs(ctx contractapi.TransactionContextInterface) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
 	// ACL restricted to local queries only
@@ -485,5 +525,12 @@ func (s *RoamingSmartContract) FetchPrivateDocuments(ctx contractapi.Transaction
 		return "", err
 	}
 
-	return ids, nil
+	// convert array to json
+	json, err := json.Marshal(ids)
+	if err != nil {
+		log.Error("failed to convert document IDs to json: " + err.Error())
+		return "", fmt.Errorf("failed to convert document IDs to json: %s", err.Error())
+	}
+
+	return string(json), nil
 }

@@ -3,7 +3,6 @@ package util
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 
 	couchdb "github.com/leesper/couchdb-golang"
@@ -11,12 +10,6 @@ import (
 )
 
 const offchainDatabaseName = "offchain_data"
-
-/*type OffchainData struct {
-	Data string
-	couchdb.Document
-}
-*/
 
 // OffchainDatabasePrepare checks wether the offchain db exists and initializes it if necessary
 func OffchainDatabasePrepare(uri string) error {
@@ -133,37 +126,58 @@ func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) 
 	return storedData, nil
 }
 
-// OffchainDatabaseFetch fetch all document ids from the database
-func OffchainDatabaseFetchAllDocumentIDs(uri string) (string, error) {
+// OffchainDatabaseFetch fetch data from the database
+func OffchainDatabaseDelete(uri string, documentID string) error {
 	log.Debugf("%s()", FunctionName())
 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
 	if err != nil {
 		log.Error("failed to access couchdb: " + err.Error())
-		return "", err
+		return err
 	}
 
 	// open db
 	db, err := conn.Get(offchainDatabaseName)
 	if err != nil {
 		log.Error("failed to open database: " + err.Error())
-		return "", err
+		return err
 	}
 
-	// fetch all
+	err = db.Delete(documentID)
+	if err != nil {
+		log.Error("failed to delete document: " + err.Error())
+		return err
+	}
+
+	return nil
+}
+
+// OffchainDatabaseFetchAllDocumentIDs fetches all document ids from
+// the database and returns an array of IDs.
+func OffchainDatabaseFetchAllDocumentIDs(uri string) ([]string, error) {
+	log.Debugf("%s()", FunctionName())
+
+	// open couchdb connection
+	conn, err := couchdb.NewServer(uri)
+	if err != nil {
+		log.Error("failed to access couchdb: " + err.Error())
+		return []string{}, err
+	}
+
+	// open db
+	db, err := conn.Get(offchainDatabaseName)
+	if err != nil {
+		log.Error("failed to open database: " + err.Error())
+		return []string{}, err
+	}
+
+	// fetch all document ids
 	ids, err := db.DocIDs()
 	if err != nil {
 		log.Error("failed to query document IDs: " + err.Error())
-		return "", fmt.Errorf("failed to query document IDS: %s", err.Error())
+		return []string{}, err
 	}
 
-	// convert to json
-	json, err := json.Marshal(ids)
-	if err != nil {
-		log.Error("failed to convert document IDs to json: " + err.Error())
-		return "", fmt.Errorf("failed to convert document IDs to json: %s", err.Error())
-	}
-
-	return string(json), nil
+	return ids, nil
 }

@@ -45,10 +45,10 @@ func (local Endpoint) fetchPrivateDocument(caller Endpoint, documentID string) (
 	return local.contract.FetchPrivateDocument(caller.txContext, documentID)
 }
 
-func (local Endpoint) fetchPrivateDocuments(caller Endpoint) (string, error) {
+func (local Endpoint) fetchPrivateDocumentIDs(caller Endpoint) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.FetchPrivateDocuments(caller.txContext)
+	return local.contract.FetchPrivateDocumentIDs(caller.txContext)
 }
 
 func (local Endpoint) createStorageKey(caller Endpoint, targetMSPID string, documentID string) (string, error) {
@@ -157,13 +157,12 @@ func TestPrivateDocumentAccess(t *testing.T) {
 	ep1, ep2 := createEndpoints(t)
 
 	// read private documents on ORG1 with ORG1 tx context
-	response, err := ep1.fetchPrivateDocuments(ep1)
-	os.Exit(0)
+	response, err := ep1.fetchPrivateDocumentIDs(ep1)
 	require.NoError(t, err)
 	log.Info(response)
 
 	// read private documents on ORG1 with ORG2 tx context
-	response, err = ep1.fetchPrivateDocuments(ep2)
+	response, err = ep1.fetchPrivateDocumentIDs(ep2)
 	require.Error(t, err)
 	log.Info(response)
 }
@@ -210,6 +209,11 @@ func TestExchangeAndSigning(t *testing.T) {
 	// VERIFY that it was written
 	data, err := ep1.fetchPrivateDocument(ep1, documentID)
 	require.NoError(t, err)
+
+	// just for testing, check all stored doc ids:
+	response, err := ep1.fetchPrivateDocumentIDs(ep1)
+	require.NoError(t, err)
+	log.Info(response)
 
 	// TODO: check all attributes...
 	var document map[string]interface{}

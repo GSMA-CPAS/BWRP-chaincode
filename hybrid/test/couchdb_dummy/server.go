@@ -130,22 +130,20 @@ func fetchAllDocumentIDs(c echo.Context) error {
 	// access dummy db
 	db := dummyDB[c.Echo().Server.Addr]
 
-	// {1, 2, 3}
-
-	// CONTINUE: required response:
-	// curl -X GET -v 'http://user:pw@localhost:5984/offchain_data/_all_docs'
-	//
-	//{"total_rows":1,"offset":0,"rows":[
-	//{"id":"324aa9cf10e4bb8bd8995d2cb76dbbf6afe097ad06c766e68ea14d55452e9e8a","key":"324aa9cf10e4bb8bd8995d2cb76dbbf6afe097ad06c766e68ea14d55452e9e8a","value":{"rev":"1-ba8d8812afd2ba7be6c81c2e4c90e9c4"}}
-	//]}
-
-	res, err := json.Marshal(db)
-	if err != nil {
-		log.Info(err.Error())
-		return c.String(http.StatusInternalServerError, `{"error" = "`+err.Error()+`"}`)
+	// build dummy response
+	var response string = `{"rows":[`
+	var rowCount = 0
+	for key, _ := range db {
+		if rowCount > 0 {
+			response += `, `
+		}
+		response += `{"id": "` + key + `", "key": "` + key + `", "value": {"rev": "1-abcdef123456"}} `
+		rowCount++
 	}
+	response += `], "total_rows": ` + strconv.Itoa(rowCount) + `, "offset": 0}`
 
-	return c.String(http.StatusOK, string(res))
+	//log.Info(response)
+	return c.String(http.StatusOK, response)
 }
 
 func returnOK(c echo.Context) error {
