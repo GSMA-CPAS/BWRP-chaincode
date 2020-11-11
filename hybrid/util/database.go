@@ -112,8 +112,8 @@ func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) 
 	// check if document already exists:
 	err = db.Contains(documentID)
 	if err != nil {
-		log.Error("failed to query document. documentID unknown")
-		return storedData, fmt.Errorf("failed to query document. documentID unknown %s", err.Error())
+		log.Error("failed to query document. documentID '" + documentID + "' unknown")
+		return storedData, fmt.Errorf("failed to query document. documentID '"+documentID+"' unknown %s", err.Error())
 	}
 
 	// query data
