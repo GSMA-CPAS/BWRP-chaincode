@@ -23,6 +23,7 @@
 package main
 
 import (
+        "strings"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -34,6 +35,10 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"encoding/pem"
+        "crypto/x509"
+        "crypto/x509/pkix"
+        "encoding/asn1"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
@@ -178,7 +183,7 @@ func (s *RoamingSmartContract) SetOffchainDBConfig(ctx contractapi.TransactionCo
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"GetOffchainDBConfig", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
+	return []string{"GetOffchainDBConfig", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
 }
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
@@ -274,6 +279,111 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 	}
 
 	return results, nil
+}
+
+// take 3 arguments (document string, signature string, certificate chain (root certificate at index 0 and client certificate at last index)
+func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, document string, signature string, certListStr string) (int, error) {
+        // Unmarshalling certListStr string to certListJson Array String
+        var certListJson []interface{}
+        err := json.Unmarshal([]byte(certListStr), &certListJson)
+        if err != nil {
+                return -1, fmt.Errorf("failed to unmarshal certificates arguments: " + err.Error())
+        }
+
+        // find the next PEM formatted block (certificate, private key etc) in the input
+        block, _ := pem.Decode([]byte(certListJson[len(certListJson) - 1].(string)))
+        if block == nil {
+                return -2, fmt.Errorf("failed to decode user certificate PEM, Invalidating")
+        }
+
+	// parses a single certificate from the given ASN.1 DER data
+        userCert, err := x509.ParseCertificate(block.Bytes)
+        if err != nil {
+                return -3, fmt.Errorf("failed to parse user certificate: " + err.Error())
+        }
+
+        // Looping to extract custom extension
+        attrExtPresent := false
+        var attrExtension pkix.Extension
+        var oidCustomAttribute = asn1.ObjectIdentifier{1, 2, 3, 4, 5, 6, 7, 8, 1}
+        for _, ext := range userCert.Extensions {
+                if ext.Id.Equal(oidCustomAttribute) {
+                        attrExtPresent = true
+                        attrExtension = ext
+                }
+        }
+
+        // Check if Custom Attribute extension is present, if not invalidate
+        if attrExtPresent == false {
+                return -4, fmt.Errorf("custom attribute extension not present, invalidating")
+        }
+
+        // Unmarshaling custom extension JSON value
+        var result map[string]interface{}
+        err = json.Unmarshal(attrExtension.Value, &result)
+        if err != nil {
+                return -5, fmt.Errorf("failed to unmarshal custom attribute json: " + err.Error())
+        }
+
+	// check if Custom attribute extension JSON has key "attrs", if not invalidate
+        attrValue, exist := result["attrs"].(map[string]interface{})
+        if exist {
+                if canSignValue, canSignExist := attrValue["CanSignDocument"].(string); canSignExist {
+                        if strings.EqualFold(canSignValue, "yes") != true {
+                                return -8, fmt.Errorf("cansigndocument attribute value is not yes, invalidating")
+                        }
+                } else {
+                        return -7, fmt.Errorf("canSignDocument attribute is not present, invalidating")
+                }
+        } else {
+                return -6, fmt.Errorf("custom attribute json doesn't have attribute attrs, invalidating")
+        }
+
+        // Adding root certificate to CertPool for validation
+        roots := x509.NewCertPool()
+        ok := roots.AppendCertsFromPEM([]byte(certListJson[0].(string)))
+        if !ok {
+                return -9, fmt.Errorf("failed to append root certificate to cert pool")
+        }
+
+	// If Certificate length is more than 2 then consider intermediate certificate for validation
+        // else validate root and user certificates only
+        var opts x509.VerifyOptions
+        if len(certListJson) > 2 {
+                inters := x509.NewCertPool()
+                for i := 1; i < len(certListJson) - 1; i++ {
+                        ok := inters.AppendCertsFromPEM([]byte(certListJson[i].(string)))
+                        if !ok {
+                                return -10, fmt.Errorf("failed to append intermediate certificate to cert pool")
+                        }
+                }
+
+                // verifying user certificate with root and intermediate certificates
+                opts = x509.VerifyOptions {
+                        Roots: roots,
+                        Intermediates: inters,
+                }
+        } else {
+                // verifying user certificate with root certificate only
+                opts = x509.VerifyOptions {
+                        Roots: roots,
+                }
+        }
+
+        if _, err := userCert.Verify(opts); err != nil {
+                return -11, fmt.Errorf("failed to verify user certificate: " + err.Error())
+        }
+
+        log.Infof("IsValidSignature: CanSignDocument[%s] PublicKeyAlgorithm[%s] SignatureAlgorithm[%s]", attrValue["CanSignDocument"].(string), userCert.PublicKeyAlgorithm, userCert.SignatureAlgorithm)
+
+	// verifies that signature is a valid signature over signed hashed data document from cert's public key
+        if err = userCert.CheckSignature(userCert.SignatureAlgorithm, []byte(document), []byte(signature)); err != nil {
+                return -12, fmt.Errorf("signature validation failed: " + err.Error())
+        }
+	log.Infof("IsValidSignature: Valid")
+
+        // document is valid
+        return 0, nil
 }
 
 // GetStorageLocation returns the storage location for
