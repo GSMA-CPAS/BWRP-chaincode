@@ -411,11 +411,6 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	document.FromMSP = invokingMSPID
 	document.ToMSP = targetMSPID
 
-	if err != nil {
-		log.Errorf("failed to marshal json")
-		return "", err
-	}
-
 	// fetch the configured rest endpoint
 	uri, err := s.getLocalOffchainDBConfig(ctx)
 	if err != nil {
