@@ -4,6 +4,7 @@ import (
 	"runtime"
 )
 
+// FunctionName returns the name of the callee function
 func FunctionName() string {
 	// pc, file, line, ..
 	programCounter, _, _, _ := runtime.Caller(1)
