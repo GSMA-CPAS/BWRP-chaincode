@@ -29,6 +29,7 @@ const (
 	compositeKeyNamespace = "\x00"
 )
 
+// StateEntry holds a TX state
 type StateEntry struct {
 	Value       []byte
 	TxID        string
@@ -366,6 +367,7 @@ func (stub *MockStub) GetHistoryForKey(key string) (shim.HistoryQueryIteratorInt
 	return &HistoryShimIterator{stub.ChannelID, stub.TxID, history, 0}, nil
 }
 
+// HistoryShimIterator contains an iterator for a history shim
 type HistoryShimIterator struct {
 	channelID  string
 	txid       string
@@ -386,15 +388,18 @@ type HistoryQueryIteratorInterface interface {
 	Next() (*queryresult.KeyModification, error)
 }
 
+// HasNext allows to check if the iterator has a next element
 func (iter *HistoryShimIterator) HasNext() bool {
 	return iter.currentLoc < len(iter.slice)
 }
 
+// Close will close this iterator
 func (iter *HistoryShimIterator) Close() error {
 	//TODO?
 	return nil
 }
 
+// Next will return the next result
 func (iter *HistoryShimIterator) Next() (*queryresult.KeyModification, error) {
 
 	var res *queryresult.KeyModification

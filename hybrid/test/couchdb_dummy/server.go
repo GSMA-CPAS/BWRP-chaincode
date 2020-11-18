@@ -154,7 +154,7 @@ func fetchAllDocumentIDs(c echo.Context) error {
 	db := dummyDB[c.Echo().Server.Addr]
 
 	// build dummy response
-	var response string = `{"rows":[`
+	var response = `{"rows":[`
 	var rowCount = 0
 	for key := range db {
 		if rowCount > 0 {

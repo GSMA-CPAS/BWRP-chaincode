@@ -126,7 +126,7 @@ func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) 
 	return storedData, nil
 }
 
-// OffchainDatabaseFetch fetch data from the database
+// OffchainDatabaseDelete fetch data from the database
 func OffchainDatabaseDelete(uri string, documentID string) error {
 	log.Debugf("%s()", FunctionName())
 
