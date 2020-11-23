@@ -3,7 +3,6 @@ package util
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 
 	couchdb "github.com/leesper/couchdb-golang"
 	log "github.com/sirupsen/logrus"
@@ -18,7 +17,7 @@ func OffchainDatabasePrepare(uri string) error {
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
 	if err != nil {
-		log.Error("failed to access couchdb: " + err.Error())
+		log.Errorf("failed to access couchdb: %v", err)
 		return err
 	}
 
@@ -42,14 +41,14 @@ func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (st
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
 	if err != nil {
-		log.Error("failed to access couchdb: " + err.Error())
+		log.Errorf("failed to access couchdb: %v", err)
 		return "", err
 	}
 
 	// open db
 	db, err := conn.Get(offchainDatabaseName)
 	if err != nil {
-		log.Error("failed to open database: " + err.Error())
+		log.Errorf("failed to open database: %v", err)
 		return "", err
 	}
 
@@ -57,7 +56,7 @@ func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (st
 	err = db.Contains(documentID)
 	if err == nil {
 		log.Error("failed to store document. documentID already exists!")
-		return "", fmt.Errorf("failed to store document. documentID %s exists", documentID)
+		return "", err
 	}
 
 	// attach a couchdb document to the data
@@ -67,7 +66,7 @@ func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (st
 	log.Info("will store document now")
 	err = couchdb.Store(db, &data)
 	if err != nil {
-		log.Error("failed to store document: " + err.Error())
+		log.Errorf("failed to store document: %v", err)
 		return "", err
 	}
 
@@ -76,7 +75,7 @@ func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (st
 	queryEntry := OffchainData{}
 	err = couchdb.Load(db, documentID, &queryEntry)
 	if err != nil {
-		log.Error("failed to query document: " + err.Error())
+		log.Errorf("failed to query document: %v", err)
 		return "", err
 	}
 
@@ -98,14 +97,14 @@ func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
 	if err != nil {
-		log.Error("failed to access couchdb: " + err.Error())
+		log.Errorf("failed to access couchdb: %v", err)
 		return storedData, err
 	}
 
 	// open db
 	db, err := conn.Get(offchainDatabaseName)
 	if err != nil {
-		log.Error("failed to open database: " + err.Error())
+		log.Errorf("failed to open database: %v", err)
 		return storedData, err
 	}
 
@@ -113,13 +112,13 @@ func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) 
 	err = db.Contains(documentID)
 	if err != nil {
 		log.Error("failed to query document. documentID '" + documentID + "' unknown")
-		return storedData, fmt.Errorf("failed to query document. documentID '"+documentID+"' unknown %s", err.Error())
+		return storedData, err
 	}
 
 	// query data
 	err = couchdb.Load(db, documentID, &storedData)
 	if err != nil {
-		log.Error("failed to query document: " + err.Error())
+		log.Errorf("failed to query document: %v", err)
 		return storedData, err
 	}
 
@@ -133,20 +132,20 @@ func OffchainDatabaseDelete(uri string, documentID string) error {
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
 	if err != nil {
-		log.Error("failed to access couchdb: " + err.Error())
+		log.Errorf("failed to access couchdb: %v", err)
 		return err
 	}
 
 	// open db
 	db, err := conn.Get(offchainDatabaseName)
 	if err != nil {
-		log.Error("failed to open database: " + err.Error())
+		log.Errorf("failed to open database: %v", err)
 		return err
 	}
 
 	err = db.Delete(documentID)
 	if err != nil {
-		log.Error("failed to delete document: " + err.Error())
+		log.Errorf("failed to delete document: %v", err)
 		return err
 	}
 
@@ -161,21 +160,21 @@ func OffchainDatabaseFetchAllDocumentIDs(uri string) ([]string, error) {
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
 	if err != nil {
-		log.Error("failed to access couchdb: " + err.Error())
+		log.Errorf("failed to access couchdb: %v", err)
 		return []string{}, err
 	}
 
 	// open db
 	db, err := conn.Get(offchainDatabaseName)
 	if err != nil {
-		log.Error("failed to open database: " + err.Error())
+		log.Errorf("failed to open database: %v", err)
 		return []string{}, err
 	}
 
 	// fetch all document ids
 	ids, err := db.DocIDs()
 	if err != nil {
-		log.Error("failed to query document IDs: " + err.Error())
+		log.Errorf("failed to query document IDs: %v", err)
 		return []string{}, err
 	}
 

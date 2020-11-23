@@ -26,7 +26,7 @@ func storeData(c echo.Context) error {
 	// extract hash
 	id := c.Param("id")
 	if len(id) != 64 {
-		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(id))+`" }`)
+		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+strconv.Itoa(len(id))+`" }`)
 	}
 
 	_, knownHash := dummyDB[c.Echo().Server.Addr]
@@ -60,7 +60,7 @@ func fetchDocument(c echo.Context) error {
 	// extract id
 	id := c.Param("id")
 	if len(id) != 64 {
-		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(id))+`" }`)
+		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+strconv.Itoa(len(id))+`" }`)
 	}
 
 	// access dummy db
@@ -80,7 +80,7 @@ func deleteDocument(c echo.Context) error {
 	// extract id
 	id := c.Param("id")
 	if len(id) != 64 {
-		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(id))+`" }`)
+		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+strconv.Itoa(len(id))+`" }`)
 	}
 
 	// access dummy db
@@ -124,7 +124,7 @@ func fetchDocumentID(c echo.Context) error {
 	// extract id
 	storageKey := c.Param("storageKey")
 	if len(storageKey) != 64 {
-		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+string(len(storageKey))+`" }`)
+		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+strconv.Itoa(len(storageKey))+`" }`)
 	}
 
 	// access dummy db
