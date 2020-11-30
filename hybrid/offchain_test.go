@@ -20,8 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type EndpointMap map[*Organization]Endpoint
-
 // Endpoint structure
 type Endpoint struct {
 	org       *Organization
@@ -144,8 +142,7 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	ep.txContext = txContext
 
 	// set transient data for setting couchdb config
-	var transient map[string][]byte
-	transient = make(map[string][]byte)
+	var transient map[string][]byte = make(map[string][]byte)
 	url := "http://" + ep.org.OffchainDBConfigURI
 	transient["uri"] = []byte(url)
 	mockStub.TransientMap = transient
@@ -235,7 +232,8 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// TODO: check all attributes...
 	var document map[string]interface{}
-	json.Unmarshal([]byte(data), &document)
+	err = json.Unmarshal([]byte(data), &document)
+	require.NoError(t, err)
 	require.EqualValues(t, document["data"], ExampleDocument.Data64)
 
 	// QUERY store document on ORG2 (remote)

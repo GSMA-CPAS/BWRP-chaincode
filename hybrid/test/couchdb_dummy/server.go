@@ -99,7 +99,7 @@ func deleteDocument(c echo.Context) error {
 	return c.String(http.StatusOK, `{"ok":true`)
 }
 
-func fetchDocuments(c echo.Context) error {
+/*func fetchDocuments(c echo.Context) error {
 	var documents map[string]map[string]interface{}
 	documents = make(map[string]map[string]interface{})
 
@@ -119,7 +119,9 @@ func fetchDocuments(c echo.Context) error {
 	// return the data
 	return c.String(http.StatusOK, string(val))
 }
+*/
 
+/*
 func fetchDocumentID(c echo.Context) error {
 	// extract id
 	storageKey := c.Param("storageKey")
@@ -148,7 +150,7 @@ func fetchDocumentID(c echo.Context) error {
 	log.Errorf("could not find storageKey " + storageKey + " in db")
 	return c.String(http.StatusInternalServerError, "id not found")
 }
-
+*/
 func fetchAllDocumentIDs(c echo.Context) error {
 	// access dummy db
 	db := dummyDB[c.Echo().Server.Addr]

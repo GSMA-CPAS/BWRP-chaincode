@@ -1,0 +1,21 @@
+# This file contains all available configuration options
+# with their default values.
+
+# options for analysis running
+run:
+  # include test files or not, default is true
+  tests: true
+
+  skip-dirs:
+    - test/mocks
+    - test/stubs
+    - test/historyshimtest
+
+issues:
+  exclude-rules:
+    - linters:
+        - staticcheck
+      text: "SA1019: package hybrid/test/historyshimtest is deprecated"
+    - linters:
+        - staticcheck
+      text: "SA1019: package github.com/golang/protobuf/proto is deprecated"

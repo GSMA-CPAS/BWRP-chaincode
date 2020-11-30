@@ -244,7 +244,7 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 		return nil, errorcode.Internal.WithMessage("failed to query results for partial composite key, %v", err).LogReturn()
 	}
 
-	results := make(map[string]string, 0)
+	results := make(map[string]string)
 
 	if iterator == nil {
 		log.Infof("no results found")
@@ -305,7 +305,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	}
 
 	// Check if Custom Attribute extension is present, if not invalidate
-	if attrExtPresent == false {
+	if !attrExtPresent {
 		return errorcode.CertInvalid.WithMessage("custom attribute extension not present").LogReturn()
 	}
 
@@ -320,7 +320,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	attrValue, exist := result["attrs"].(map[string]interface{})
 	if exist {
 		if canSignValue, canSignExist := attrValue["CanSignDocument"].(string); canSignExist {
-			if strings.EqualFold(canSignValue, "yes") != true {
+			if !strings.EqualFold(canSignValue, "yes") {
 				return errorcode.CertInvalid.WithMessage("cansigndocument attribute value is not yes [%s]", canSignValue).LogReturn()
 			}
 		} else {
