@@ -174,7 +174,7 @@ func returnOK(c echo.Context) error {
 }
 
 // StartServer will start a dummy rest server
-func StartServer(uri string) {
+func StartServer(uri string) *echo.Echo {
 	e := echo.New()
 	// enable this to see all requests
 	e.Debug = true
@@ -202,8 +202,13 @@ func StartServer(uri string) {
 	go func() {
 		err := e.Start(uri)
 		if err != nil {
-			log.Panic(err)
+			if err.Error() == "http: Server closed" {
+				log.Debugf("shutting down server " + uri)
+			} else {
+				log.Panic(err)
+			}
 		}
 	}()
 	time.Sleep(200 * time.Millisecond)
+	return e
 }
