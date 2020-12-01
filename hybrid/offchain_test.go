@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,7 @@ type Endpoint struct {
 	contract  *RoamingSmartContract
 	txContext *mocks.TransactionContext
 	stub      *historyshimtest.MockStub
+	couchdb   *echo.Echo
 }
 
 // add forwarding functions
@@ -114,6 +116,11 @@ func createEndpoints(t *testing.T) (Endpoint, Endpoint) {
 	return epORG1, epORG2
 }
 
+func closeEndpoints(ep1 Endpoint, ep2 Endpoint) {
+	ep1.couchdb.Close()
+	ep2.couchdb.Close()
+}
+
 func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Organization) Endpoint {
 	var ep Endpoint
 	ep.org = &org
@@ -125,7 +132,7 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	// set up local msp id
 	os.Setenv("CORE_PEER_LOCALMSPID", ep.org.Name)
 	//start a couchdb dummy server to handle requests from chaincode
-	couchdb.StartServer(ep.org.OffchainDBConfigURI)
+	ep.couchdb = couchdb.StartServer(ep.org.OffchainDBConfigURI)
 	// init contract
 	ep.contract = initRoamingSmartContract()
 
@@ -170,6 +177,9 @@ func TestPrivateDocumentAccess(t *testing.T) {
 	response, err = ep1.fetchPrivateDocumentIDs(ep2)
 	require.Error(t, err)
 	log.Info(response)
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
 }
 
 func TestOffchainDBConfig(t *testing.T) {
@@ -191,6 +201,9 @@ func TestOffchainDBConfig(t *testing.T) {
 	// read back with txcontext ORG2 -> this has to fail!
 	_, err = ep1.getOffchainDBConfig(ep2)
 	require.Error(t, err)
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
 }
 
 func TestExchangeAndSigning(t *testing.T) {
@@ -274,6 +287,9 @@ func TestExchangeAndSigning(t *testing.T) {
 	signatures, err = ep2.getSignatures(ep2, ORG1.Name, storagekeypartnerORG1)
 	require.NoError(t, err)
 	chaincode.PrintSignatureResponse(signatures)
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
 }
 
 func TestDocumentDelete(t *testing.T) {
@@ -307,6 +323,9 @@ func TestDocumentDelete(t *testing.T) {
 	ids, err = ep1.fetchPrivateDocumentIDs(ep1)
 	require.NoError(t, err)
 	require.EqualValues(t, `[]`, ids)
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
 }
 
 func TestErrorHandling(t *testing.T) {
@@ -315,10 +334,13 @@ func TestErrorHandling(t *testing.T) {
 	log.Infof("################################################################################")
 
 	// set up proper endpoints
-	ep1, _ := createEndpoints(t)
+	ep1, ep2 := createEndpoints(t)
 
 	// calc documentID
 	_, err := ep1.createStorageKey(ep1, "targetMSP", "invalid_docid")
 	require.Error(t, err)
 	log.Infof("got error string as expected! (%s)\n", err.Error())
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
 }
