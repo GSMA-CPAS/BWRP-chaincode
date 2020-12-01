@@ -307,5 +307,18 @@ func TestDocumentDelete(t *testing.T) {
 	ids, err = ep1.fetchPrivateDocumentIDs(ep1)
 	require.NoError(t, err)
 	require.EqualValues(t, `[]`, ids)
+}
 
+func TestErrorHandling(t *testing.T) {
+	log.Infof("################################################################################")
+	log.Infof("running test " + util.FunctionName())
+	log.Infof("################################################################################")
+
+	// set up proper endpoints
+	ep1, _ := createEndpoints(t)
+
+	// calc documentID
+	_, err := ep1.createStorageKey(ep1, "targetMSP", "invalid_docid")
+	require.Error(t, err)
+	log.Infof("got error string as expected! (%s)\n", err.Error())
 }

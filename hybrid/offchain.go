@@ -31,9 +31,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"hybrid/acl"
+	"hybrid/errorcode"
 	"hybrid/util"
 	"os"
 	"strconv"
@@ -46,19 +46,6 @@ import (
 
 const compositeKeyDefinition string = "owner~type~key~txid"
 const enableDebug = true
-
-var (
-	//ErrorAccessDenied is thrown when the ACL prevents the execution
-	ErrorAccessDenied = errors.New("Access Denied")
-	//ErrorOffchainDBUnconfigured is thrown when the config is not set yet
-	ErrorOffchainDBUnconfigured = errors.New("OffchainDB configuration not set. Please configure it by calling setOffchainDBConfig()")
-	//ErrorLocalOverrideOnly is thrown when this is no local call
-	ErrorLocalOverrideOnly = errors.New("Access Denied: Invalid targetMSPID, only local overrides are allowed")
-	//ErrorHashMismatch is thrown when the hashes do not match
-	ErrorHashMismatch = errors.New("Hash mismatch")
-	//ErrorTransientMissingURI is thrown when the URI is not in the transient storage
-	ErrorTransientMissingURI = errors.New("URI not found in the transient map")
-)
 
 func main() {
 	if enableDebug {
@@ -106,11 +93,11 @@ func (s *RoamingSmartContract) GetOffchainDBConfig(ctx contractapi.TransactionCo
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
-		return "", ErrorAccessDenied
+		return "", errorcode.NonLocalAccessDenied.LogReturn()
 	}
-
 	config, err := s.getLocalOffchainDBConfig(ctx)
 
+	// it is safe to forward local errors
 	return config, err
 }
 
@@ -127,10 +114,10 @@ func (s *RoamingSmartContract) getLocalOffchainDBConfig(ctx contractapi.Transact
 	// fetch data from implicit collection
 	data, err := ctx.GetStub().GetPrivateData(implicitCollection, "OFFCHAINDB_URI")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get offchaindb, %v", err)
 	}
 	if data == nil {
-		return "", ErrorOffchainDBUnconfigured
+		return "", fmt.Errorf("no data in offchaindb config")
 	}
 
 	// return result
@@ -144,39 +131,44 @@ func (s *RoamingSmartContract) SetOffchainDBConfig(ctx contractapi.TransactionCo
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
-		return ErrorAccessDenied
+		return errorcode.NonLocalAccessDenied.LogReturn()
 	}
 
 	// get caller msp
-	mspID, err := ctx.GetClientIdentity().GetMSPID()
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		return err
+		return errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
 	// the setter will always set the collection that he owns!
-	implicitCollection := "_implicit_org_" + mspID
+	implicitCollection := "_implicit_org_" + invokingMSPID
 
 	// uri is stored in transient map to hide it from other organizations
 	transMap, err := ctx.GetStub().GetTransient()
 	if err != nil {
-		return fmt.Errorf("Error getting transient: %v", err)
+		return errorcode.Internal.WithMessage("failed to get transient, %v", err).LogReturn()
 	}
 
 	// fetch transient data
 	uri, ok := transMap["uri"]
 	if !ok {
-		return ErrorTransientMissingURI
+		return errorcode.Internal.WithMessage("transient data is missing").LogReturn()
 	}
 
 	// store config data in implicit collection
 	err = ctx.GetStub().PutPrivateData(implicitCollection, "OFFCHAINDB_URI", uri)
 	if err != nil {
-		return err
+		return errorcode.Internal.WithMessage("failed to store private data, %v", err).LogReturn()
 	}
 
 	// do wee need to initialise the db?
 	err = util.OffchainDatabasePrepare(string(uri))
-	return err
+	if err != nil {
+		return errorcode.Internal.WithMessage("failed to init offchaindb, %v", err).LogReturn()
+	}
+
+	// all fine
+	return nil
 }
 
 // GetEvaluateTransactions returns functions of RoamingSmartContract to be tagged as evaluate (=query)
@@ -194,31 +186,32 @@ func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionConte
 	rand32 := make([]byte, 32)
 	_, err := rand.Read(rand32)
 	if err != nil {
-		log.Errorf("failed to generate documentID: %v", err)
-		return "", err
+		return "", errorcode.Internal.WithMessage("failed to generate documentID, %v", err).LogReturn()
 	}
 
 	// encode random numbers to hex string
 	documentID := hex.EncodeToString(rand32)
 
-	// get the calling MSP
+	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		log.Errorf("failed to fetch calling MSPID: %v", err)
-		return "", err
+		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
 	// make sure that there is no such document id for this MSP on the ledger yet:
 	storageKey, err := s.CreateStorageKey(invokingMSPID, documentID)
-	data, err := ctx.GetStub().GetState(storageKey)
 	if err != nil {
-		log.Errorf("failed to get ledger state: %v", err)
+		// it is safe to return local errors
 		return "", err
 	}
 
+	data, err := ctx.GetStub().GetState(storageKey)
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("unable to get ledger state, %v", err).LogReturn()
+	}
+
 	if data != nil {
-		log.Errorf("data for this documentID already exists.")
-		return "", fmt.Errorf("data for this documentID already exists")
+		return "", errorcode.DocumentIDExists.WithMessage("data for this documentID %s already exists", documentID).LogReturn()
 	}
 
 	// fine, data does not exist on ledger -> the calulated documentID is ok
@@ -230,10 +223,11 @@ func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentID s
 	log.Debugf("%s()", util.FunctionName())
 
 	if len(documentID) != 64 {
-		return "", fmt.Errorf("invalid input: size of documentID is invalid: %d != 64", len(documentID))
+		return "", errorcode.DocumentIDInvalid.WithMessage("invalid input size of documentID is invalid as %d != 64", len(documentID)).LogReturn()
 	}
+
 	if len(targetMSPID) == 0 {
-		return "", fmt.Errorf("invalid input: targetMSPID is empty")
+		return "", errorcode.TargetMSPInvalid.WithMessage("invalid input, targetMSPID is empty").LogReturn()
 	}
 	hash := sha256.Sum256([]byte(targetMSPID + documentID))
 	return hex.EncodeToString(hash[:]), nil
@@ -247,8 +241,7 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(compositeKeyDefinition, []string{targetMSPID, "SIGNATURE", key})
 
 	if err != nil {
-		log.Errorf("failed to query results for partial composite key: %v", err)
-		return nil, err
+		return nil, errorcode.Internal.WithMessage("failed to query results for partial composite key, %v", err).LogReturn()
 	}
 
 	results := make(map[string]string, 0)
@@ -262,15 +255,13 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 		item, err := iterator.Next()
 
 		if err != nil {
-			log.Errorf("failed to iterate results: %v", err)
-			return nil, err
+			return nil, errorcode.Internal.WithMessage("failed to iterate results, %v", err).LogReturn()
 		}
 
 		_, attributes, err := ctx.GetStub().SplitCompositeKey(item.GetKey())
 
 		if err != nil {
-			log.Errorf("failed to split composite result: %v", err)
-			return nil, err
+			return nil, errorcode.Internal.WithMessage("failed to split composite result, %v", err).LogReturn()
 		}
 
 		txID := attributes[len(attributes)-1]
@@ -282,24 +273,24 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 }
 
 // IsValidSignature take 3 arguments (document string, signature string, certificate chain (root certificate at index 0 and client certificate at last index)
-func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, document string, signature string, certListStr string) (int, error) {
+func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, document string, signature string, certListStr string) error {
 	// Unmarshalling certListStr string to certListJSON Array String
 	var certListJSON []interface{}
 	err := json.Unmarshal([]byte(certListStr), &certListJSON)
 	if err != nil {
-		return -1, fmt.Errorf("failed to unmarshal certificates arguments: " + err.Error())
+		return errorcode.CertInvalid.WithMessage("failed to unmarshal certificates arguments, %v", err).LogReturn()
 	}
 
 	// find the next PEM formatted block (certificate, private key etc) in the input
 	block, _ := pem.Decode([]byte(certListJSON[len(certListJSON)-1].(string)))
 	if block == nil {
-		return -2, fmt.Errorf("failed to decode user certificate PEM, Invalidating")
+		return errorcode.CertInvalid.WithMessage("failed to decode user certificate PEM").LogReturn()
 	}
 
 	// parses a single certificate from the given ASN.1 DER data
 	userCert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return -3, fmt.Errorf("failed to parse user certificate: " + err.Error())
+		return errorcode.CertInvalid.WithMessage("failed to parse user certificate, %v", err).LogReturn()
 	}
 
 	// Looping to extract custom extension
@@ -315,14 +306,14 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 
 	// Check if Custom Attribute extension is present, if not invalidate
 	if attrExtPresent == false {
-		return -4, fmt.Errorf("custom attribute extension not present, invalidating")
+		return errorcode.CertInvalid.WithMessage("custom attribute extension not present").LogReturn()
 	}
 
 	// Unmarshaling custom extension JSON value
 	var result map[string]interface{}
 	err = json.Unmarshal(attrExtension.Value, &result)
 	if err != nil {
-		return -5, fmt.Errorf("failed to unmarshal custom attribute json: " + err.Error())
+		return errorcode.CertInvalid.WithMessage("failed to unmarshal custom attribute json, %v", err).LogReturn()
 	}
 
 	// check if Custom attribute extension JSON has key "attrs", if not invalidate
@@ -330,20 +321,20 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	if exist {
 		if canSignValue, canSignExist := attrValue["CanSignDocument"].(string); canSignExist {
 			if strings.EqualFold(canSignValue, "yes") != true {
-				return -8, fmt.Errorf("cansigndocument attribute value is not yes, invalidating")
+				return errorcode.CertInvalid.WithMessage("cansigndocument attribute value is not yes [%s]", canSignValue).LogReturn()
 			}
 		} else {
-			return -7, fmt.Errorf("canSignDocument attribute is not present, invalidating")
+			return errorcode.CertInvalid.WithMessage("canSignDocument attribute is not present").LogReturn()
 		}
 	} else {
-		return -6, fmt.Errorf("custom attribute json doesn't have attribute attrs, invalidating")
+		return errorcode.CertInvalid.WithMessage("custom attribute json doesn't have attribute attrs").LogReturn()
 	}
 
 	// Adding root certificate to CertPool for validation
 	roots := x509.NewCertPool()
 	ok := roots.AppendCertsFromPEM([]byte(certListJSON[0].(string)))
 	if !ok {
-		return -9, fmt.Errorf("failed to append root certificate to cert pool")
+		return errorcode.CertInvalid.WithMessage("failed to append root certificate to cert pool").LogReturn()
 	}
 
 	// If Certificate length is more than 2 then consider intermediate certificate for validation
@@ -354,7 +345,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 		for i := 1; i < len(certListJSON)-1; i++ {
 			ok := inters.AppendCertsFromPEM([]byte(certListJSON[i].(string)))
 			if !ok {
-				return -10, fmt.Errorf("failed to append intermediate certificate to cert pool")
+				return errorcode.CertInvalid.WithMessage("failed to append intermediate certificate to cert pool").LogReturn()
 			}
 		}
 
@@ -371,19 +362,19 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	}
 
 	if _, err := userCert.Verify(opts); err != nil {
-		return -11, fmt.Errorf("failed to verify user certificate: " + err.Error())
+		return errorcode.CertInvalid.WithMessage("failed to verify user certificate, %v", err).LogReturn()
 	}
 
 	log.Infof("IsValidSignature: CanSignDocument[%s] PublicKeyAlgorithm[%s] SignatureAlgorithm[%s]", attrValue["CanSignDocument"].(string), userCert.PublicKeyAlgorithm, userCert.SignatureAlgorithm)
 
 	// verifies that signature is a valid signature over signed hashed data document from cert's public key
 	if err = userCert.CheckSignature(userCert.SignatureAlgorithm, []byte(document), []byte(signature)); err != nil {
-		return -12, fmt.Errorf("signature validation failed: " + err.Error())
+		return errorcode.SignatureInvalid.WithMessage("signature validation failed, %v", err).LogReturn()
 	}
 	log.Infof("IsValidSignature: Valid")
 
 	// document is valid
-	return 0, nil
+	return nil
 }
 
 // GetStorageLocation returns the storage location for
@@ -391,11 +382,10 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType string, key string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
-	// get the calling MSP
+	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		log.Errorf("failed to fetch calling MSPID: %v", err)
-		return "", err
+		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
 	// get the txID
@@ -405,8 +395,7 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 	storageLocation, err := ctx.GetStub().CreateCompositeKey(compositeKeyDefinition, []string{invokingMSPID, storageType, key, txID})
 
 	if err != nil {
-		log.Errorf("failed to create composite key: %v", err)
-		return "", err
+		return "", errorcode.Internal.WithMessage("failed to create composite key, %v", err).LogReturn()
 	}
 
 	log.Infof("got composite key for <%s> = 0x%s", compositeKeyDefinition, hex.EncodeToString([]byte(storageLocation)))
@@ -418,33 +407,29 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
 	log.Debugf("%s()", util.FunctionName())
 
-	// get the calling MSP
+	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		log.Errorf("failed to fetch calling MSPID: %v", err)
-		return err
+		return errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
 	// fetch storage location where we will store the data
 	storageLocation, err := s.GetStorageLocation(ctx, dataType, key)
 	if err != nil {
-		log.Errorf("failed to fetch storageLocation: %v", err)
-		return err
+		return errorcode.Internal.WithMessage("failed to fetch storageLocation, %v", err).LogReturn()
 	}
 
 	// store data
 	log.Infof("will store data of type %s on ledger: state[%s] = 0x%s", dataType, storageLocation, hex.EncodeToString(data))
 	err = ctx.GetStub().PutState(storageLocation, data)
 	if err != nil {
-		log.Errorf("failed to store data: %v", err)
-		return err
+		return errorcode.Internal.WithMessage("failed to store data, %v", err).LogReturn()
 	}
 
 	// fetch tx creation time
 	txTimestamp, err := ctx.GetStub().GetTxTimestamp()
 	if err != nil {
-		log.Errorf("failed to fetch tx creation timestamp: %v", err)
-		return err
+		return errorcode.Internal.WithMessage("failed to fetch tx creation timestamp, %v", err).LogReturn()
 	}
 
 	// build event object
@@ -461,8 +446,7 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 	log.Infof("sending event %s: %s", eventName, payload)
 	err = ctx.GetStub().SetEvent(eventName, []byte(payload))
 	if err != nil {
-		log.Errorf("failed to set event: %v", err)
-		return err
+		return errorcode.Internal.WithMessage("failed to send event, %v", err).LogReturn()
 	}
 
 	// no error
@@ -489,14 +473,13 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 
 	// verify passed data
 	if len(documentID) != 64 {
-		return "", fmt.Errorf("invalid input: size of documentID is invalid: %d != 64", len(documentID))
+		return "", errorcode.DocumentIDInvalid.WithMessage("invalid input size of documentID is invalid as %d != 64", len(documentID)).LogReturn()
 	}
 
-	// get the calling MSP
+	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		log.Errorf("failed to fetch MSPID: %v", err)
-		return "", err
+		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
 	// only allow target override if called locally
@@ -505,7 +488,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 		// called from a external MSP
 		if targetMSPID != localMSPID {
 			// external MSP wants to set an invalid targetMSP
-			return "", ErrorLocalOverrideOnly
+			return "", errorcode.NonLocalAccessDenied.LogReturn()
 		}
 	}
 
@@ -522,29 +505,26 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	document.ToMSP = targetMSPID
 
 	if err != nil {
-		log.Errorf("failed to marshal json")
-		return "", err
+		return "", errorcode.Internal.WithMessage("failed to marshal json").LogReturn()
 	}
 
 	// fetch the configured rest endpoint
 	uri, err := s.getLocalOffchainDBConfig(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch OffchainDB uri: %v", err)
+		return "", errorcode.OffchainDBConfig.WithMessage("failed to fetch OffchainDB uri, %v", err).LogReturn()
 	}
 
 	// store data in offchain db
 	storedDataHash, err := util.OffchainDatabaseStore(uri, documentID, document)
 	if err != nil {
-		log.Errorf("failed to store data: %v", err)
-		return "", err
+		return "", errorcode.Internal.WithMessage("failed to store data, %v", err).LogReturn()
 	}
 
 	log.Infof("stored data ok. saved data hash %s", storedDataHash)
 
 	// verify that the hash from the post request matches our data
 	if dataHash != storedDataHash {
-		log.Errorf("hash mismatch %s != %s", dataHash, storedDataHash)
-		return "", ErrorHashMismatch
+		return "", errorcode.Internal.WithMessage("hash mismatch %s != %s", dataHash, storedDataHash).LogReturn()
 	}
 
 	return storedDataHash, nil
@@ -557,7 +537,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
-		return "", ErrorAccessDenied
+		return "", errorcode.NonLocalAccessDenied.LogReturn()
 	}
 
 	log.Infof("accessing private document with id " + documentID)
@@ -565,21 +545,19 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	// fetch the configured rest endpoint
 	uri, err := s.getLocalOffchainDBConfig(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch OffchainDB uri: %v", err)
+		return "", errorcode.OffchainDBConfig.WithMessage("failed to fetch OffchainDB uri, %v", err).LogReturn()
 	}
 
 	// fetch from database
 	data, err := util.OffchainDatabaseFetch(uri, documentID)
 	if err != nil {
-		log.Errorf("db access failed. Error: %v", err)
-		return "", err
+		return "", errorcode.DocumentIDUnknown.WithMessage("db access failed, %v", err).LogReturn()
 	}
 
 	// convert to clean json without couchdb "leftovers"
 	dataJSON, err := data.MarshalToCleanJSON()
 	if err != nil {
-		log.Errorf("failed to convert data from db to json: %v", err)
-		return "", err
+		return "", errorcode.Internal.WithMessage("failed to convert data from db to json, %v", err).LogReturn()
 	}
 
 	// return result
@@ -593,7 +571,7 @@ func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.Transaction
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
-		return ErrorAccessDenied
+		return errorcode.NonLocalAccessDenied.LogReturn()
 	}
 
 	log.Infof("deleting private document with id " + documentID)
@@ -601,14 +579,13 @@ func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.Transaction
 	// fetch the configured rest endpoint
 	uri, err := s.getLocalOffchainDBConfig(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to fetch OffchainDB uri: %v", err)
+		return errorcode.OffchainDBConfig.WithMessage("failed to fetch OffchainDB uri, %v", err).LogReturn()
 	}
 
 	// fetch from database
 	err = util.OffchainDatabaseDelete(uri, documentID)
 	if err != nil {
-		log.Errorf("db delete access failed. Error: %v", err)
-		return err
+		return errorcode.Internal.WithMessage("db delete access failed, %v", err).LogReturn()
 	}
 
 	// all fine
@@ -622,27 +599,25 @@ func (s *RoamingSmartContract) FetchPrivateDocumentIDs(ctx contractapi.Transacti
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
-		return "", ErrorAccessDenied
+		return "", errorcode.NonLocalAccessDenied.LogReturn()
 	}
 
 	// fetch the configured rest endpoint
 	uri, err := s.getLocalOffchainDBConfig(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch OffchainDB uri: %v", err)
+		return "", errorcode.OffchainDBConfig.WithMessage("failed to fetch offchaindb uri, %v", err).LogReturn()
 	}
 
 	// fetch from database
 	ids, err := util.OffchainDatabaseFetchAllDocumentIDs(uri)
 	if err != nil {
-		log.Errorf("db access failed. Error: %v", err)
-		return "", err
+		return "", errorcode.Internal.WithMessage("db access failed, %v", err).LogReturn()
 	}
 
 	// convert array to json
 	json, err := json.Marshal(ids)
 	if err != nil {
-		log.Errorf("failed to convert document IDs to json: %v", err)
-		return "", fmt.Errorf("failed to convert document IDs to json: %v", err)
+		return "", errorcode.Internal.WithMessage("failed to convert document IDs to json, %v", err).LogReturn()
 	}
 
 	return string(json), nil
