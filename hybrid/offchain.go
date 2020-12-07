@@ -367,8 +367,14 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 
 	log.Infof("IsValidSignature: CanSignDocument[%s] PublicKeyAlgorithm[%s] SignatureAlgorithm[%s]", attrValue["CanSignDocument"].(string), userCert.PublicKeyAlgorithm, userCert.SignatureAlgorithm)
 
+	// Decode Signature String
+	signatureBytes, err := hex.DecodeString(signature)
+	if err != nil {
+		return errorcode.CertInvalid.WithMessage("failed to decode signature string").LogReturn()
+	}
+
 	// verifies that signature is a valid signature over signed hashed data document from cert's public key
-	if err = userCert.CheckSignature(userCert.SignatureAlgorithm, []byte(document), []byte(signature)); err != nil {
+	if err = userCert.CheckSignature(userCert.SignatureAlgorithm, []byte(document), signatureBytes); err != nil {
 		return errorcode.SignatureInvalid.WithMessage("signature validation failed, %v", err).LogReturn()
 	}
 	log.Infof("IsValidSignature: Valid")

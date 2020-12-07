@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"hybrid/test/chaincode"
 	couchdb "hybrid/test/couchdb_dummy"
 	. "hybrid/test/data"
@@ -82,6 +83,12 @@ func (local Endpoint) getSignatures(caller Endpoint, targetMSPID string, key str
 	return local.contract.GetSignatures(caller.txContext, targetMSPID, key)
 }
 
+func (local Endpoint) isSignatureValid(caller Endpoint, document string, signature string, certListStr string) error {
+	log.Debugf("%s()", util.FunctionName())
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.IsValidSignature(caller.txContext, document, signature, certListStr)
+}
+
 func (local Endpoint) invokeStoreDocumentHash(caller Endpoint, key string, documentHash string) error {
 	log.Debugf("%s()", util.FunctionName())
 	txid := local.org.Name + ":" + uuid.New().String()
@@ -137,7 +144,7 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	ep.contract = initRoamingSmartContract()
 
 	// tx context
-	txContext, err := chaincode.PrepareTransactionContext(ep.stub, ep.org.Name, ep.org.Certificate)
+	txContext, err := chaincode.PrepareTransactionContext(ep.stub, ep.org.Name, ep.org.UserCertificate)
 	require.NoError(t, err)
 
 	// use context
@@ -253,20 +260,17 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org1 signs document:
 	// create signature (later provided by external API/client)
-	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = ep1.invokeStoreSignature(ep1, storagekeyORG1, signatureORG1)
+	err = ep1.invokeStoreSignature(ep1, storagekeyORG1, ORG1.ExampleDocSignature)
 	require.NoError(t, err)
 
 	// ### org2 signs document:
 	// QUERY create storage key
 	storagekeyORG2, err := ep2.createStorageKey(ep2, ORG2.Name, documentID)
 	require.NoError(t, err)
-	// create signature (later provided by external API/client)
-	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
 
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = ep1.invokeStoreSignature(ep2, storagekeyORG2, signatureORG2)
+	err = ep1.invokeStoreSignature(ep2, storagekeyORG2, ORG2.ExampleDocSignature)
 	require.NoError(t, err)
 
 	// ### (optional) org1 checks signatures of org2 on document:
@@ -340,6 +344,25 @@ func TestErrorHandling(t *testing.T) {
 	_, err := ep1.createStorageKey(ep1, "targetMSP", "invalid_docid")
 	require.Error(t, err)
 	log.Infof("got error string as expected! (%s)\n", err.Error())
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
+}
+
+func TestSignatureValidation(t *testing.T) {
+	log.Infof("################################################################################")
+	log.Infof("running test " + util.FunctionName())
+	log.Infof("################################################################################")
+
+	// set up proper endpoints
+	ep1, ep2 := createEndpoints(t)
+
+	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, ORG2.ExampleDocSignature)
+	certListStr := fmt.Sprintf("[%q, %q]", ORG2.RootCertificate, ORG2.UserCertificate)
+
+	// Validating signature
+	err := ep1.isSignatureValid(ep2, ExampleDocument.Data64, ORG2.ExampleDocSignature, certListStr)
+	require.NoError(t, err)
 
 	// shut down dummy db
 	closeEndpoints(ep1, ep2)
