@@ -1,4 +1,4 @@
-name: golangci-lint
+name: go-lint
 on:
   push:
     tags:
@@ -6,7 +6,7 @@ on:
     branches:
       - master
       - main
-      - ssch
+      - ssch*
   pull_request:
 jobs:
   go-mod:
