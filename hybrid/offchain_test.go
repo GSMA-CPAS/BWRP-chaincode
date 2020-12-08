@@ -3,12 +3,12 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
-	"crypto/x509"
-	"crypto/rand"
 	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/hex"
-	"encoding/pem"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"hybrid/test/chaincode"
 	couchdb "hybrid/test/couchdb_dummy"
@@ -365,7 +365,7 @@ func TestSignatureValidation(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	pblock,_ := pem.Decode(ORG2.PrivateKey)
+	pblock, _ := pem.Decode(ORG2.PrivateKey)
 	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
 	require.NoError(t, err)
 
@@ -391,12 +391,12 @@ func TestFalseSignatureValidation(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	pblock,_ := pem.Decode(ORG2.PrivateKey)
-        pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
-        require.NoError(t, err)
+	pblock, _ := pem.Decode(ORG2.PrivateKey)
+	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
+	require.NoError(t, err)
 
-        signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), ExampleDocument.Tmp)
-        require.NoError(t, err)
+	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), ExampleDocument.Tmp)
+	require.NoError(t, err)
 
 	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
 	certListStr := fmt.Sprintf("[%q, %q]", ORG1.RootCertificate, ORG2.UserCertificate)
