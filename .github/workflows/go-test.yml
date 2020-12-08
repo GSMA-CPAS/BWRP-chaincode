@@ -10,7 +10,6 @@ on:
   pull_request:
 jobs:
   test:
-    strategy:
     runs-on: ubuntu-latest
     steps:
     - name: install go
