@@ -10,7 +10,6 @@ type Organization struct {
 	RootCertificate     []byte
 	UserCertificate     []byte
 	PrivateKey          []byte
-	ExampleDocSignature string
 	OffchainDBConfigURI string
 }
 
@@ -54,7 +53,6 @@ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgeRgdjKvM8N3xnZG0
 T9C9LIfXGIlRFmcEtX9237kWFJihRANCAAT+75cLx4wV/ZN7lsRASR/xrFNtsK0k
 Ufp/QI0Jaf2tIgx9KcmJXvy4JwNbWmXM/6HixR/58zysoa6NdFvC5QC+
 -----END PRIVATE KEY-----`),
-	ExampleDocSignature: `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`,
 	OffchainDBConfigURI: "localhost:3001"}
 
 // ORG2 is dummy organization 2
@@ -97,5 +95,4 @@ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgH4JcWpxZR7tsTlCS
 OD6uC2639QdW/DnOJKeRJNSDgKShRANCAASoh3rVPKT1fB1T0bmTXvXqypVPXIZS
 N3nWhLq+aEVi7R1LpfJeTQ/w3Bcs2672398m7QMzrizxsEwbgX+LvCL5
 -----END PRIVATE KEY-----`),
-	ExampleDocSignature: `304402207edc7600ce9c538cd063e77f51858afaa44f1bb721e270c600d874e5d46e8a30022064787ecea5cf7c7fccea898a74e5b2392473ad2acc88cfba104d266d4ad24dcb`,
 	OffchainDBConfigURI: "localhost:3002"}

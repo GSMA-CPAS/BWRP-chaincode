@@ -3,8 +3,11 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
-	//	"crypto/x509"
-	//	"encoding/pem"
+	"crypto/x509"
+	"crypto/rand"
+	"crypto/ecdsa"
+	"encoding/hex"
+	"encoding/pem"
 	"encoding/json"
 	"fmt"
 	"hybrid/test/chaincode"
@@ -262,17 +265,20 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org1 signs document:
 	// create signature (later provided by external API/client)
+	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = ep1.invokeStoreSignature(ep1, storagekeyORG1, ORG1.ExampleDocSignature)
+	err = ep1.invokeStoreSignature(ep1, storagekeyORG1, signatureORG1)
 	require.NoError(t, err)
 
 	// ### org2 signs document:
 	// QUERY create storage key
 	storagekeyORG2, err := ep2.createStorageKey(ep2, ORG2.Name, documentID)
 	require.NoError(t, err)
+	// create signature (later provided by external API/client)
+	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
 
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = ep1.invokeStoreSignature(ep2, storagekeyORG2, ORG2.ExampleDocSignature)
+	err = ep1.invokeStoreSignature(ep2, storagekeyORG2, signatureORG2)
 	require.NoError(t, err)
 
 	// ### (optional) org1 checks signatures of org2 on document:
@@ -359,11 +365,18 @@ func TestSignatureValidation(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, ORG2.ExampleDocSignature)
+	pblock,_ := pem.Decode(ORG2.PrivateKey)
+	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
+	require.NoError(t, err)
+
+	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), ExampleDocument.Tmp)
+	require.NoError(t, err)
+
+	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
 	certListStr := fmt.Sprintf("[%q, %q]", ORG2.RootCertificate, ORG2.UserCertificate)
 
 	// Validating signature
-	err := ep1.isSignatureValid(ep2, ExampleDocument.Data64, ORG2.ExampleDocSignature, certListStr)
+	err = ep1.isSignatureValid(ep2, ExampleDocument.Data64, hex.EncodeToString(signature[:]), certListStr)
 	require.NoError(t, err)
 
 	// shut down dummy db
@@ -378,11 +391,18 @@ func TestFalseSignatureValidation(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, ORG2.ExampleDocSignature)
+	pblock,_ := pem.Decode(ORG2.PrivateKey)
+        pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
+        require.NoError(t, err)
+
+        signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), ExampleDocument.Tmp)
+        require.NoError(t, err)
+
+	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
 	certListStr := fmt.Sprintf("[%q, %q]", ORG2.UserCertificate, ORG2.UserCertificate)
 
 	// Validating signature
-	err := ep1.isSignatureValid(ep2, ExampleDocument.Data64, ORG2.ExampleDocSignature, certListStr)
+	err = ep1.isSignatureValid(ep2, ExampleDocument.Data64, hex.EncodeToString(signature[:]), certListStr)
 	require.Error(t, err)
 	log.Infof("got error string as expected! (%s)\n", err.Error())
 
