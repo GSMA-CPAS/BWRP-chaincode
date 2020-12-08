@@ -4,7 +4,6 @@ gofmt -l .
 gofmt -w .
 echo "> done."
 
-echo "> will run go lint ..."
-golint ./... | grep -v "test/mocks/"
-echo "> please fix all errors above (if any)."
+echo "> will run golangci-lint ..."
+go run github.com/golangci/golangci-lint/cmd/golangci-lint run || echo "--> please fix all errors above!"
 
