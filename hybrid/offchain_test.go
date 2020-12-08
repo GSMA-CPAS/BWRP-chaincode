@@ -399,7 +399,7 @@ func TestFalseSignatureValidation(t *testing.T) {
         require.NoError(t, err)
 
 	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
-	certListStr := fmt.Sprintf("[%q, %q]", ORG2.UserCertificate, ORG2.UserCertificate)
+	certListStr := fmt.Sprintf("[%q, %q]", ORG1.RootCertificate, ORG2.UserCertificate)
 
 	// Validating signature
 	err = ep1.isSignatureValid(ep2, ExampleDocument.Data64, hex.EncodeToString(signature[:]), certListStr)
