@@ -3,6 +3,8 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
+	//	"crypto/x509"
+	//	"encoding/pem"
 	"encoding/json"
 	"fmt"
 	"hybrid/test/chaincode"
@@ -363,6 +365,26 @@ func TestSignatureValidation(t *testing.T) {
 	// Validating signature
 	err := ep1.isSignatureValid(ep2, ExampleDocument.Data64, ORG2.ExampleDocSignature, certListStr)
 	require.NoError(t, err)
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
+}
+
+func TestFalseSignatureValidation(t *testing.T) {
+	log.Infof("################################################################################")
+	log.Infof("running test " + util.FunctionName())
+	log.Infof("################################################################################")
+
+	// set up proper endpoints
+	ep1, ep2 := createEndpoints(t)
+
+	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, ORG2.ExampleDocSignature)
+	certListStr := fmt.Sprintf("[%q, %q]", ORG2.UserCertificate, ORG2.UserCertificate)
+
+	// Validating signature
+	err := ep1.isSignatureValid(ep2, ExampleDocument.Data64, ORG2.ExampleDocSignature, certListStr)
+	require.Error(t, err)
+	log.Infof("got error string as expected! (%s)\n", err.Error())
 
 	// shut down dummy db
 	closeEndpoints(ep1, ep2)

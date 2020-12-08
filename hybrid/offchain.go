@@ -293,6 +293,11 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 		return errorcode.CertInvalid.WithMessage("failed to parse user certificate, %v", err).LogReturn()
 	}
 
+	// Checking if Root Certificate is CA certificate
+	if userCert.IsCA != false {
+		return errorcode.CertInvalid.WithMessage("user certificate is CA certificate").LogReturn()
+	}
+
 	// Looping to extract custom extension
 	attrExtPresent := false
 	var attrExtension pkix.Extension
@@ -330,6 +335,23 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 		return errorcode.CertInvalid.WithMessage("custom attribute json doesn't have attribute attrs").LogReturn()
 	}
 
+	// Decoding Root Certificate
+	rootBlock, _ := pem.Decode([]byte(certListJSON[0].(string)))
+	if rootBlock == nil {
+		return errorcode.CertInvalid.WithMessage("failed to decode root certificate PEM").LogReturn()
+	}
+
+	// parses a root certificate from the given ASN.1 DER data
+	rootCert, err := x509.ParseCertificate(rootBlock.Bytes)
+	if err != nil {
+		return errorcode.CertInvalid.WithMessage("failed to parse root certificate, %v", err).LogReturn()
+	}
+
+	// Checking if Root Certificate is CA certificate
+	if rootCert.IsCA != true {
+		return errorcode.CertInvalid.WithMessage("root certificate is not CA certificate").LogReturn()
+	}
+
 	// Adding root certificate to CertPool for validation
 	roots := x509.NewCertPool()
 	ok := roots.AppendCertsFromPEM([]byte(certListJSON[0].(string)))
@@ -343,6 +365,23 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	if len(certListJSON) > 2 {
 		inters := x509.NewCertPool()
 		for i := 1; i < len(certListJSON)-1; i++ {
+			// Decoding Root Certificate
+			interBlock, _ := pem.Decode([]byte(certListJSON[i].(string)))
+			if interBlock == nil {
+				return errorcode.CertInvalid.WithMessage("failed to decode intermediate certificate PEM").LogReturn()
+			}
+
+			// parses a intermediate certificate from the given ASN.1 DER data
+			interCert, err := x509.ParseCertificate(interBlock.Bytes)
+			if err != nil {
+				return errorcode.CertInvalid.WithMessage("failed to parse intermediate certificate, %v", err).LogReturn()
+			}
+
+			// Checking if Intermediate Certificate is not CA certificate
+			if interCert.IsCA != false {
+				return errorcode.CertInvalid.WithMessage("intermediate certificate is CA certificate").LogReturn()
+			}
+
 			ok := inters.AppendCertsFromPEM([]byte(certListJSON[i].(string)))
 			if !ok {
 				return errorcode.CertInvalid.WithMessage("failed to append intermediate certificate to cert pool").LogReturn()
