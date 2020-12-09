@@ -369,7 +369,9 @@ func TestSignatureValidation(t *testing.T) {
 	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
 	require.NoError(t, err)
 
-	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), ExampleDocument.Tmp)
+	hash, _ := hex.DecodeString(ExampleDocument.Hash)
+
+	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash)
 	require.NoError(t, err)
 
 	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
@@ -395,7 +397,9 @@ func TestFalseSignatureValidation(t *testing.T) {
 	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
 	require.NoError(t, err)
 
-	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), ExampleDocument.Tmp)
+	hash, _ := hex.DecodeString(ExampleDocument.Hash)
+
+	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash)
 	require.NoError(t, err)
 
 	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))

@@ -9,7 +9,6 @@ import (
 // Document structure
 type Document struct {
 	Data64 string
-	Tmp    []byte
 	Hash   string
 }
 
@@ -20,6 +19,5 @@ var tmp = sha256.Sum256([]byte(data64))
 // ExampleDocument : a test document:
 var ExampleDocument = Document{
 	Data64: data64,
-	Tmp:    tmp[:],
 	Hash:   hex.EncodeToString(tmp[:]),
 }
