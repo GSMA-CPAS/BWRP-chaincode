@@ -3,7 +3,13 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
+	"fmt"
 	"hybrid/test/chaincode"
 	couchdb "hybrid/test/couchdb_dummy"
 	. "hybrid/test/data"
@@ -80,6 +86,12 @@ func (local Endpoint) getSignatures(caller Endpoint, targetMSPID string, key str
 	return local.contract.GetSignatures(caller.txContext, targetMSPID, key)
 }
 
+func (local Endpoint) isSignatureValid(caller Endpoint, document string, signature string, certListStr string) error {
+	log.Debugf("%s()", util.FunctionName())
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.IsValidSignature(caller.txContext, document, signature, certListStr)
+}
+
 func (local Endpoint) invokeStoreDocumentHash(caller Endpoint, key string, documentHash string) error {
 	log.Debugf("%s()", util.FunctionName())
 	txid := local.org.Name + ":" + uuid.New().String()
@@ -135,7 +147,7 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	ep.contract = initRoamingSmartContract()
 
 	// tx context
-	txContext, err := chaincode.PrepareTransactionContext(ep.stub, ep.org.Name, ep.org.Certificate)
+	txContext, err := chaincode.PrepareTransactionContext(ep.stub, ep.org.Name, ep.org.UserCertificate)
 	require.NoError(t, err)
 
 	// use context
@@ -336,6 +348,63 @@ func TestErrorHandling(t *testing.T) {
 
 	// calc documentID
 	_, err := ep1.createStorageKey(ep1, "targetMSP", "invalid_docid")
+	require.Error(t, err)
+	log.Infof("got error string as expected! (%s)\n", err.Error())
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
+}
+
+func TestSignatureValidation(t *testing.T) {
+	log.Infof("################################################################################")
+	log.Infof("running test " + util.FunctionName())
+	log.Infof("################################################################################")
+
+	// set up proper endpoints
+	ep1, ep2 := createEndpoints(t)
+
+	pblock, _ := pem.Decode(ORG2.PrivateKey)
+	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
+	require.NoError(t, err)
+
+	hash, _ := hex.DecodeString(ExampleDocument.Hash)
+
+	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash)
+	require.NoError(t, err)
+
+	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
+	certListStr := fmt.Sprintf("[%q, %q]", ORG2.RootCertificate, ORG2.UserCertificate)
+
+	// Validating signature
+	err = ep1.isSignatureValid(ep2, ExampleDocument.Data64, hex.EncodeToString(signature[:]), certListStr)
+	require.NoError(t, err)
+
+	// shut down dummy db
+	closeEndpoints(ep1, ep2)
+}
+
+func TestFalseSignatureValidation(t *testing.T) {
+	log.Infof("################################################################################")
+	log.Infof("running test " + util.FunctionName())
+	log.Infof("################################################################################")
+
+	// set up proper endpoints
+	ep1, ep2 := createEndpoints(t)
+
+	pblock, _ := pem.Decode(ORG2.PrivateKey)
+	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
+	require.NoError(t, err)
+
+	hash, _ := hex.DecodeString(ExampleDocument.Hash)
+
+	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash)
+	require.NoError(t, err)
+
+	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
+	certListStr := fmt.Sprintf("[%q, %q]", ORG1.RootCertificate, ORG2.UserCertificate)
+
+	// Validating signature
+	err = ep1.isSignatureValid(ep2, ExampleDocument.Data64, hex.EncodeToString(signature[:]), certListStr)
 	require.Error(t, err)
 	log.Infof("got error string as expected! (%s)\n", err.Error())
 
