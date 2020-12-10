@@ -294,7 +294,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	}
 
 	// Checking if Root Certificate is CA certificate
-	if userCert.IsCA != false {
+	if userCert.IsCA {
 		return errorcode.CertInvalid.WithMessage("user certificate is CA certificate").LogReturn()
 	}
 
@@ -348,7 +348,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	}
 
 	// Checking if Root Certificate is CA certificate
-	if rootCert.IsCA != true {
+	if !rootCert.IsCA {
 		return errorcode.CertInvalid.WithMessage("root certificate is not CA certificate").LogReturn()
 	}
 
@@ -378,7 +378,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 			}
 
 			// Checking if Intermediate Certificate is not CA certificate
-			if interCert.IsCA != false {
+			if interCert.IsCA {
 				return errorcode.CertInvalid.WithMessage("intermediate certificate is CA certificate").LogReturn()
 			}
 
