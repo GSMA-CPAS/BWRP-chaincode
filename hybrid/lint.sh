@@ -5,5 +5,14 @@ gofmt -w .
 echo "> done."
 
 echo "> will run golangci-lint ..."
-go run github.com/golangci/golangci-lint/cmd/golangci-lint run || echo "--> please fix all errors above!"
+LINTER=$(go env GOPATH)/bin/golangci-lint
+if [ ! -x $LINTER ]; then
+    echo "ERROR: linter not found ($LINTER)"
+    echo "       please install golangci-lint via:"
+    echo "       curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.33.0"
+    echo ""
+    exit
+fi
+
+$LINTER run || echo "--> please fix all errors above!"
 

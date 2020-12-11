@@ -25,21 +25,19 @@ package main
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"hybrid/acl"
+	"hybrid/certificate"
 	"hybrid/errorcode"
 	"hybrid/util"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/golang/protobuf/ptypes"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
 )
@@ -174,7 +172,7 @@ func (s *RoamingSmartContract) SetOffchainDBConfig(ctx contractapi.TransactionCo
 // SetCertificate stores the organization certificates on the ledger
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) SetCertificate(ctx contractapi.TransactionContextInterface, certType string, certData string) error {
-	log.Debugf("%s()", util.FunctionName())
+	log.Debugf("%s(%s, ...)", util.FunctionName(), certType)
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
@@ -205,7 +203,7 @@ func (s *RoamingSmartContract) SetCertificate(ctx contractapi.TransactionContext
 
 // GetCertificate retrieves the certificate for a given organization from the ledger
 func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContextInterface, msp string, certType string) (string, error) {
-	log.Debugf("%s()", util.FunctionName())
+	log.Debugf("%s(%s, %s)", util.FunctionName(), msp, certType)
 
 	// cert storage location:
 	storageLocation, err := ctx.GetStub().CreateCompositeKey("msp~configtype~data", []string{msp, "certificates", certType})
@@ -227,7 +225,7 @@ func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContext
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
+	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "VerifySignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
 }
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
@@ -272,7 +270,7 @@ func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionConte
 
 // CreateStorageKey returns the hidden key used for hidden communication based on a documentID and the targetMSP
 func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentID string) (string, error) {
-	log.Debugf("%s()", util.FunctionName())
+	log.Debugf("%s(%s, %s)", util.FunctionName(), targetMSPID, documentID)
 
 	if len(documentID) != 64 {
 		return "", errorcode.DocumentIDInvalid.WithMessage("invalid input size of documentID is invalid as %d != 64", len(documentID)).LogReturn()
@@ -285,9 +283,16 @@ func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentID s
 	return hex.EncodeToString(hash[:]), nil
 }
 
-// GetSignatures returns all signatures stored in the ledger for this key
-func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, key string) (map[string]string, error) {
+// GetSignatures returns all signatures stored in the ledger for this documentID
+func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, documentID string) (map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName())
+
+	// calc storage key
+	key, err := s.CreateStorageKey(targetMSPID, documentID)
+	if err != nil {
+		// forwarding local errors is safe
+		return nil, err
+	}
 
 	// query results for composite key without identity
 	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(compositeKeyDefinition, []string{targetMSPID, "SIGNATURE", key})
@@ -324,142 +329,26 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 	return results, nil
 }
 
-// IsValidSignature take 3 arguments (document string, signature string, certificate chain (root certificate at index 0 and client certificate at last index)
-func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, document string, signature string, certListStr string) error {
-	// Unmarshalling certListStr string to certListJSON Array String
-	var certListJSON []interface{}
-	err := json.Unmarshal([]byte(certListStr), &certListJSON)
+// IsValidSignature take 3 arguments (creatorMSP, document, signature, certificate chain without the root certificate)
+func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, creatorMSP string, document string, signature string, certChainPEM string) error {
+	log.Debugf("%s(%s, ...)", util.FunctionName(), creatorMSP)
+
+	// get the root certificates for creatorMSP
+	rootPEM, err := s.GetCertificate(ctx, creatorMSP, "root")
 	if err != nil {
-		return errorcode.CertInvalid.WithMessage("failed to unmarshal certificates arguments, %v", err).LogReturn()
+		// it is safe to forward local errors
+		return err
 	}
 
-	// find the next PEM formatted block (certificate, private key etc) in the input
-	block, _ := pem.Decode([]byte(certListJSON[len(certListJSON)-1].(string)))
-	if block == nil {
-		return errorcode.CertInvalid.WithMessage("failed to decode user certificate PEM").LogReturn()
-	}
-
-	// parses a single certificate from the given ASN.1 DER data
-	userCert, err := x509.ParseCertificate(block.Bytes)
+	// extract and verify user cert based on PEM
+	userCert, err := certificate.GetVerifiedUserCertificate(rootPEM, certChainPEM)
 	if err != nil {
-		return errorcode.CertInvalid.WithMessage("failed to parse user certificate, %v", err).LogReturn()
+		// it is safe to forward local errors
+		return err
 	}
 
-	// Checking if Root Certificate is CA certificate
-	if userCert.IsCA {
-		return errorcode.CertInvalid.WithMessage("user certificate is CA certificate").LogReturn()
-	}
-
-	// Looping to extract custom extension
-	attrExtPresent := false
-	var attrExtension pkix.Extension
-	var oidCustomAttribute = asn1.ObjectIdentifier{1, 2, 3, 4, 5, 6, 7, 8, 1}
-	for _, ext := range userCert.Extensions {
-		if ext.Id.Equal(oidCustomAttribute) {
-			attrExtPresent = true
-			attrExtension = ext
-		}
-	}
-
-	// Check if Custom Attribute extension is present, if not invalidate
-	if !attrExtPresent {
-		return errorcode.CertInvalid.WithMessage("custom attribute extension not present").LogReturn()
-	}
-
-	// Unmarshaling custom extension JSON value
-	var result map[string]interface{}
-	err = json.Unmarshal(attrExtension.Value, &result)
-	if err != nil {
-		return errorcode.CertInvalid.WithMessage("failed to unmarshal custom attribute json, %v", err).LogReturn()
-	}
-
-	// check if Custom attribute extension JSON has key "attrs", if not invalidate
-	attrValue, exist := result["attrs"].(map[string]interface{})
-	if exist {
-		if canSignValue, canSignExist := attrValue["CanSignDocument"].(string); canSignExist {
-			if !strings.EqualFold(canSignValue, "yes") {
-				return errorcode.CertInvalid.WithMessage("cansigndocument attribute value is not yes [%s]", canSignValue).LogReturn()
-			}
-		} else {
-			return errorcode.CertInvalid.WithMessage("canSignDocument attribute is not present").LogReturn()
-		}
-	} else {
-		return errorcode.CertInvalid.WithMessage("custom attribute json doesn't have attribute attrs").LogReturn()
-	}
-
-	// Decoding Root Certificate
-	rootBlock, _ := pem.Decode([]byte(certListJSON[0].(string)))
-	if rootBlock == nil {
-		return errorcode.CertInvalid.WithMessage("failed to decode root certificate PEM").LogReturn()
-	}
-
-	// parses a root certificate from the given ASN.1 DER data
-	rootCert, err := x509.ParseCertificate(rootBlock.Bytes)
-	if err != nil {
-		return errorcode.CertInvalid.WithMessage("failed to parse root certificate, %v", err).LogReturn()
-	}
-
-	// Checking if Root Certificate is CA certificate
-	if !rootCert.IsCA {
-		return errorcode.CertInvalid.WithMessage("root certificate is not CA certificate").LogReturn()
-	}
-
-	// Adding root certificate to CertPool for validation
-	roots := x509.NewCertPool()
-	ok := roots.AppendCertsFromPEM([]byte(certListJSON[0].(string)))
-	if !ok {
-		return errorcode.CertInvalid.WithMessage("failed to append root certificate to cert pool").LogReturn()
-	}
-
-	// If Certificate length is more than 2 then consider intermediate certificate for validation
-	// else validate root and user certificates only
-	var opts x509.VerifyOptions
-	if len(certListJSON) > 2 {
-		inters := x509.NewCertPool()
-		for i := 1; i < len(certListJSON)-1; i++ {
-			// Decoding Root Certificate
-			interBlock, _ := pem.Decode([]byte(certListJSON[i].(string)))
-			if interBlock == nil {
-				return errorcode.CertInvalid.WithMessage("failed to decode intermediate certificate PEM").LogReturn()
-			}
-
-			// parses a intermediate certificate from the given ASN.1 DER data
-			interCert, err := x509.ParseCertificate(interBlock.Bytes)
-			if err != nil {
-				return errorcode.CertInvalid.WithMessage("failed to parse intermediate certificate, %v", err).LogReturn()
-			}
-
-			// Checking if Intermediate Certificate is not CA certificate
-			if interCert.IsCA {
-				return errorcode.CertInvalid.WithMessage("intermediate certificate is CA certificate").LogReturn()
-			}
-
-			ok := inters.AppendCertsFromPEM([]byte(certListJSON[i].(string)))
-			if !ok {
-				return errorcode.CertInvalid.WithMessage("failed to append intermediate certificate to cert pool").LogReturn()
-			}
-		}
-
-		// verifying user certificate with root and intermediate certificates
-		opts = x509.VerifyOptions{
-			Roots:         roots,
-			Intermediates: inters,
-		}
-	} else {
-		// verifying user certificate with root certificate only
-		opts = x509.VerifyOptions{
-			Roots: roots,
-		}
-	}
-
-	if _, err := userCert.Verify(opts); err != nil {
-		return errorcode.CertInvalid.WithMessage("failed to verify user certificate, %v", err).LogReturn()
-	}
-
-	log.Infof("IsValidSignature: CanSignDocument[%s] PublicKeyAlgorithm[%s] SignatureAlgorithm[%s]", attrValue["CanSignDocument"].(string), userCert.PublicKeyAlgorithm, userCert.SignatureAlgorithm)
-
-	// Decode Signature String
-	signatureBytes, err := hex.DecodeString(signature)
+	// decode signature from base64
+	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
 		return errorcode.CertInvalid.WithMessage("failed to decode signature string").LogReturn()
 	}
@@ -477,7 +366,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 // GetStorageLocation returns the storage location for
 // a given storageType and key by using the composite key feature
 func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionContextInterface, storageType string, key string) (string, error) {
-	log.Debugf("%s()", util.FunctionName())
+	log.Debugf("%s(%s, %s)", util.FunctionName(), storageType, key)
 
 	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
@@ -502,7 +391,7 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 
 // storeData stores given data with a given type on the ledger
 func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) error {
-	log.Debugf("%s()", util.FunctionName())
+	log.Debugf("%s(%s, %s, ...)", util.FunctionName(), key, dataType)
 
 	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
@@ -531,7 +420,7 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 
 	// build event object
 	eventName := "STORE:" + dataType
-	timestampString := time.Unix(txTimestamp.Seconds, int64(txTimestamp.Nanos)).Format(time.RFC3339)
+	timestampString := ptypes.TimestampString(txTimestamp)
 
 	payload := `{ ` +
 		`"msp" : "` + invokingMSPID + `", ` +
@@ -552,13 +441,111 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 
 // StoreSignature stores a given signature on the ledger
 func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContextInterface, key string, signatureJSON string) error {
-	log.Debugf("%s()", util.FunctionName())
-	return s.storeData(ctx, key, "SIGNATURE", []byte(signatureJSON))
+	log.Debugf("%s(%s, ...)", util.FunctionName(), key)
+
+	var signatureObject util.Signature
+	var err error
+
+	// try to extract all values from the given JSON
+	// .signature
+	signatureObject.Signature, err = util.ExtractFieldFromJSON(signatureJSON, "signature")
+	if err != nil {
+		// it is safe to forward local errors
+		return err
+	}
+	// .algorithm
+	signatureObject.Algorithm, err = util.ExtractFieldFromJSON(signatureJSON, "algorithm")
+	if err != nil {
+		// it is safe to forward local errors
+		return err
+	}
+	// .certificate
+	signatureObject.Certificate, err = util.ExtractFieldFromJSON(signatureJSON, "certificate")
+	if err != nil {
+		// it is safe to forward local errors
+		return err
+	}
+
+	// fetch and store tx timestamp
+	timestamp, err := ctx.GetStub().GetTxTimestamp()
+	if err != nil {
+		return errorcode.Internal.WithMessage("failed to fetch transaction timestamp").LogReturn()
+	}
+	signatureObject.Timestamp = ptypes.TimestampString(timestamp)
+
+	// convert to JSON
+	json, err := json.Marshal(signatureObject)
+	if err != nil {
+		return errorcode.Internal.WithMessage("failed to convert signatureObject to json, %v", err).LogReturn()
+	}
+
+	return s.storeData(ctx, key, "SIGNATURE", json)
+}
+
+// VerifySignatures checks all stored signature on the ledger against a document
+func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionContextInterface, targetMSPID string, documentID string, document string) (map[string]map[string]string, error) {
+	log.Debugf("%s(%s, %s, ...)", util.FunctionName(), targetMSPID, documentID)
+
+	var signatureObject util.Signature
+
+	// fetch all signatures
+	log.Debugf("fetching all signatures for MSP %s and documentID %s", targetMSPID, documentID)
+	signatures, err := s.GetSignatures(ctx, targetMSPID, documentID)
+	if err != nil {
+		// it is safe to forward local errors
+		return nil, err
+	}
+
+	// verify the given signatures:
+	var results = make(map[string]map[string]string)
+	for txID, signatureString := range signatures {
+		// decode json string to object
+		err := json.Unmarshal([]byte(signatureString), &signatureObject)
+		if err != nil {
+			return nil, errorcode.Internal.WithMessage("failed to convert signature json to object, %v", err).LogReturn()
+		}
+
+		// build result object
+		results[txID] = make(map[string]string)
+
+		// add Signature
+		results[txID]["signature"] = signatureObject.Signature
+
+		// add timestamp of signature
+		results[txID]["timestamp"] = signatureObject.Timestamp
+
+		// verify signature
+		log.Debugf("tx #%s: testing signature %s...", txID, signatureObject.Signature)
+		validationError := s.IsValidSignature(ctx, targetMSPID, document, signatureObject.Signature, signatureObject.Certificate)
+		if validationError != nil {
+			// this signature is INVALID
+			results[txID]["valid"] = "false"
+
+			// try to decode error
+			errorCode, decodingError := errorcode.FromJSON(validationError)
+			if decodingError != nil {
+				results[txID]["errorcode"] = errorcode.BadJSON.Code
+				results[txID]["message"] = decodingError.Error()
+			} else {
+				results[txID]["errorcode"] = errorCode.Code
+				results[txID]["message"] = errorCode.Message
+			}
+		} else {
+			// this signature is valid
+			results[txID]["valid"] = "true"
+			//results[txID]["errorcode"] = ""
+			//results[txID]["message"] = ""
+		}
+
+		return results, nil
+	}
+
+	return nil, nil
 }
 
 // StoreDocumentHash stores a given document hash on the ledger
 func (s *RoamingSmartContract) StoreDocumentHash(ctx contractapi.TransactionContextInterface, key string, documentHash string) error {
-	log.Debugf("%s()", util.FunctionName())
+	log.Debugf("%s(%s, %s)", util.FunctionName(), key, documentHash)
 	return s.storeData(ctx, key, "DOCUMENTHASH", []byte(documentHash))
 }
 
@@ -630,7 +617,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 // FetchPrivateDocument will return a private document identified by its documentID
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) (string, error) {
-	log.Debugf("%s()", util.FunctionName())
+	log.Debugf("%s(%s)", util.FunctionName(), documentID)
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
@@ -664,7 +651,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 // DeletePrivateDocument will delete a private document identified by its documentID from the database
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) error {
-	log.Debugf("%s()", util.FunctionName())
+	log.Debugf("%s(%s)", util.FunctionName(), documentID)
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {

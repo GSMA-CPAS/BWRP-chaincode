@@ -1,4 +1,8 @@
 # changelog #
+
+- GetSignatures uses documentID instead of key, its local only and easier to use this way
+- errorcode uses proper to/from json
+
 - expose FetchPrivateDocuments
 - better testing api scheme, more tests added
 - added StoreDocumentHash(): this will store a document hash on the ledger and sends an STORE:DOCUMENTHASH event

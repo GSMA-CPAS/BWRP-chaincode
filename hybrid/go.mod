@@ -3,7 +3,6 @@ module hybrid
 go 1.15
 
 require (
-	github.com/cloudflare/cfssl v0.0.0-20190510060611-9c027c93ba9e
 	github.com/golang/protobuf v1.4.2
 	github.com/google/go-cmp v0.5.2 // indirect
 	github.com/google/uuid v1.1.2

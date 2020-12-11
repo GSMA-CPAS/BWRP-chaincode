@@ -2,6 +2,7 @@ package util
 
 import (
 	"encoding/json"
+	"hybrid/errorcode"
 
 	couchdb "github.com/leesper/couchdb-golang"
 )
@@ -32,4 +33,28 @@ func (d OffchainData) MarshalToCleanJSON() ([]byte, error) {
 	x.Rev = ""
 	// do the marshalling
 	return json.Marshal(x)
+}
+
+type Signature struct {
+	Signature   string `json:"signature"`
+	Algorithm   string `json:"algorithm"`
+	Certificate string `json:"certificate"`
+	Timestamp   string `json:"timestamp"`
+}
+
+// extract a single field from input json
+func ExtractFieldFromJSON(jsonInput string, field string) (string, error) {
+	var input map[string]interface{}
+	err := json.Unmarshal([]byte(jsonInput), &input)
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to parse signature json, %v", err).LogReturn()
+	}
+
+	// try to extract the value
+	value, exists := input[field].(string)
+	if !exists {
+		return "", errorcode.Internal.WithMessage("failed to parse signature json, missing field %s", field).LogReturn()
+	}
+
+	return value, nil
 }

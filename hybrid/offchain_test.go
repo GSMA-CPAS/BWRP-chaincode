@@ -3,14 +3,7 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
-	"crypto/ecdsa"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
-	"errors"
-	"fmt"
 	"hybrid/test/chaincode"
 	couchdb "hybrid/test/couchdb_dummy"
 	. "hybrid/test/data"
@@ -81,16 +74,32 @@ func (local Endpoint) createDocumentID(caller Endpoint) (string, error) {
 	return local.contract.CreateDocumentID(caller.txContext)
 }
 
-func (local Endpoint) getSignatures(caller Endpoint, targetMSPID string, key string) (map[string]string, error) {
+func (local Endpoint) getSignatures(caller Endpoint, targetMSPID string, documentID string) (map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.GetSignatures(caller.txContext, targetMSPID, key)
+	return local.contract.GetSignatures(caller.txContext, targetMSPID, documentID)
 }
 
-func (local Endpoint) isSignatureValid(caller Endpoint, document string, signature string, certListStr string) error {
+func (local Endpoint) verifySignatures(caller Endpoint, targetMSPID string, documentID string, document string) (map[string]map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.IsValidSignature(caller.txContext, document, signature, certListStr)
+	return local.contract.VerifySignatures(caller.txContext, targetMSPID, documentID, document)
+}
+
+func (local Endpoint) isSignatureValid(caller Endpoint, msp string, document string, signature string, certListStr string) error {
+	log.Debugf("%s()", util.FunctionName())
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.IsValidSignature(caller.txContext, msp, document, signature, certListStr)
+}
+
+func (local Endpoint) invokeSetCertificate(caller Endpoint, certType string, certData string) error {
+	log.Debugf("%s()", util.FunctionName())
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.SetCertificate(caller.txContext, certType, certData)
+	local.stub.MockTransactionEnd(txid)
+	return err
 }
 
 func (local Endpoint) invokeStoreDocumentHash(caller Endpoint, key string, documentHash string) error {
@@ -167,6 +176,11 @@ func configureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	log.Infof(ep.org.Name+": read back uri <%s>\n", uri)
 	require.NoError(t, err)
 	require.EqualValues(t, uri, url)
+
+	// store root cert:
+	err = ep.invokeSetCertificate(ep, "root", string(ep.org.RootCertificate))
+	require.NoError(t, err)
+
 	return ep
 }
 
@@ -263,21 +277,28 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 
 	// ### org1 signs document:
-	// create signature (later provided by external API/client)
-	signatureORG1 := `{signer: "User1@ORG1", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x123..." }`
+	signature, err := chaincode.SignDocument(ExampleDocument.Data64, ORG1.PrivateKey, ORG1.UserCertificate)
+	require.NoError(t, err)
+	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = ep1.invokeStoreSignature(ep1, storagekeyORG1, signatureORG1)
+	err = ep1.invokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
 	require.NoError(t, err)
 
 	// ### org2 signs document:
 	// QUERY create storage key
 	storagekeyORG2, err := ep2.createStorageKey(ep2, ORG2.Name, documentID)
 	require.NoError(t, err)
-	// create signature (later provided by external API/client)
-	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
+
+	// create document signature
+	signature, err = chaincode.SignDocument(ExampleDocument.Data64, ORG2.PrivateKey, ORG2.UserCertificate)
+	require.NoError(t, err)
+	signatureJSON, err = json.Marshal(signature)
+	require.NoError(t, err)
 
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
-	err = ep1.invokeStoreSignature(ep2, storagekeyORG2, signatureORG2)
+	err = ep1.invokeStoreSignature(ep2, storagekeyORG2, string(signatureJSON))
 	require.NoError(t, err)
 
 	// ### (optional) org1 checks signatures of org2 on document:
@@ -285,19 +306,29 @@ func TestExchangeAndSigning(t *testing.T) {
 	storagekeypartnerORG2, err := ep1.createStorageKey(ep1, ORG2.Name, documentID)
 	require.Equal(t, storagekeyORG2, storagekeypartnerORG2)
 	require.NoError(t, err)
+
 	// QUERY GetSignatures
-	signatures, err := ep1.getSignatures(ep1, ORG2.Name, storagekeypartnerORG2)
+	signatures, err := ep1.getSignatures(ep1, ORG2.Name, documentID)
 	require.NoError(t, err)
 	chaincode.PrintSignatureResponse(signatures)
 
 	// ### (optional) org2 checks signatures of org1 on document:
-	// QUERY create expected key
-	storagekeypartnerORG1, err := ep2.createStorageKey(ep2, ORG1.Name, documentID)
-	require.NoError(t, err)
 	// QUERY GetSignatures
-	signatures, err = ep2.getSignatures(ep2, ORG1.Name, storagekeypartnerORG1)
+	signatures, err = ep2.getSignatures(ep2, ORG1.Name, documentID)
 	require.NoError(t, err)
 	chaincode.PrintSignatureResponse(signatures)
+
+	// QUERY verify signatures on ORG1
+	verification, err := ep2.verifySignatures(ep2, ORG1.Name, documentID, ExampleDocument.Data64)
+	require.NoError(t, err)
+	err = chaincode.CheckSignatureResponse(verification)
+	require.NoError(t, err)
+
+	// QUERY verify signatures on ORG2
+	verification, err = ep2.verifySignatures(ep2, ORG2.Name, documentID, ExampleDocument.Data64)
+	require.NoError(t, err)
+	err = chaincode.CheckSignatureResponse(verification)
+	require.NoError(t, err)
 
 	// shut down dummy db
 	closeEndpoints(ep1, ep2)
@@ -364,30 +395,12 @@ func TestSignatureValidation(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	pblock, _ := pem.Decode(ORG2.PrivateKey)
-	if pblock == nil {
-		err := errors.New("Failed to Decode Private Key")
-		log.Errorf("Got Unexpected error (%s)\n", err.Error())
-
-		// shut down dummy db
-		closeEndpoints(ep1, ep2)
-		return
-	}
-
-	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
+	// ### org1 signs document:
+	signature, err := chaincode.SignDocument(ExampleDocument.Data64, ORG1.PrivateKey, ORG1.UserCertificate)
 	require.NoError(t, err)
-
-	hash, err := hex.DecodeString(ExampleDocument.Hash)
-	require.NoError(t, err)
-
-	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash)
-	require.NoError(t, err)
-
-	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
-	certListStr := fmt.Sprintf("[%q, %q]", ORG2.RootCertificate, ORG2.UserCertificate)
 
 	// Validating signature
-	err = ep1.isSignatureValid(ep2, ExampleDocument.Data64, hex.EncodeToString(signature[:]), certListStr)
+	err = ep1.isSignatureValid(ep2, ORG1.Name, ExampleDocument.Data64, signature.Signature, signature.Certificate)
 	require.NoError(t, err)
 
 	// shut down dummy db
@@ -402,32 +415,28 @@ func TestFalseSignatureValidation(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	pblock, _ := pem.Decode(ORG2.PrivateKey)
-	if pblock == nil {
-		err := errors.New("Failed to Decode Private Key")
-		log.Errorf("Got Unexpected error (%s)\n", err.Error())
-
-		// shut down dummy db
-		closeEndpoints(ep1, ep2)
-		return
-	}
-
-	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
+	// ### org1 signs document using a bad cert:
+	badCert := `-----BEGIN CERTIFICATE-----
+MIICOTCCAb6gAwIBAgIUEfHHesjALbI1MxKLEPr2RhdxcMMwCgYIKoZIzj0EAwIw
+YzESMBAGA1UEAwwJUk9PVEBPUkcxMQswCQYDVQQGEwJERTEMMAoGA1UECAwDTlJX
+MRIwEAYDVQQHDAlCaWVsZWZlbGQxDTALBgNVBAoMBE9SRzExDzANBgNVBAsMBk9S
+RzFPVTAeFw0yMDEyMTUxNTQ0MDRaFw0yMTEyMTUxNTQ0MDRaMGMxEjAQBgNVBAMM
+CXVzZXJAT1JHMTELMAkGA1UEBhMCREUxDDAKBgNVBAgMA05SVzESMBAGA1UEBwwJ
+QmllbGVmZWxkMQ0wCwYDVQQKDARPUkcxMQ8wDQYDVQQLDAZPUkcxT1UwdjAQBgcq
+hkjOPQIBBgUrgQQAIgNiAATPVOccV+t57EDQQVTYqhjV+XNM0QlHUXb3K6RqmPNf
+MlI+aHm6aNCzOna0iaIOaXLuEzsKBA8b8UdJ3QLS2cGadqwHGKehmAT3ughg2pcv
+fKWGZ5kK7VKaaqxdCtKJg6+jMzAxMC8GCCoDBAUGBwgBBCN7ImF0dHJzIjp7IkNh
+blNpZ25Eb2N1bWVudCI6InllcyJ9fTAKBggqhkjOPQQDAgNpADBmAjEAursYWIEP
+lhx7sgedlY6X78lfsAvwwQe0uXj6JhioQIanYpUxDzpwPj/42Oq0rtgDAjEAu0De
+fTAO/i0POc1ltcZ7QFY1GTYIaUOBGuYFDJambWQWh7jqcvZf42grSXQ0YvdB
+-----END CERTIFICATE-----`
+	signature, err := chaincode.SignDocument(ExampleDocument.Data64, ORG1.PrivateKey, badCert)
 	require.NoError(t, err)
-
-	hash, err := hex.DecodeString(ExampleDocument.Hash)
-	require.NoError(t, err)
-
-	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash)
-	require.NoError(t, err)
-
-	log.Infof("Document <%s> Signature <%s>\n", ExampleDocument.Data64, hex.EncodeToString(signature[:]))
-	certListStr := fmt.Sprintf("[%q, %q]", ORG1.RootCertificate, ORG2.UserCertificate)
 
 	// Validating signature
-	err = ep1.isSignatureValid(ep2, ExampleDocument.Data64, hex.EncodeToString(signature[:]), certListStr)
+	err = ep1.isSignatureValid(ep2, ORG1.Name, ExampleDocument.Data64, signature.Signature, signature.Certificate)
 	require.Error(t, err)
-	log.Infof("got error string as expected! (%s)\n", err.Error())
+	log.Infof("got error as expected! (%s)\n", err.Error())
 
 	// shut down dummy db
 	closeEndpoints(ep1, ep2)
