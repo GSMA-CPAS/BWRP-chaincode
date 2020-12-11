@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"hybrid/test/chaincode"
 	couchdb "hybrid/test/couchdb_dummy"
@@ -364,10 +365,20 @@ func TestSignatureValidation(t *testing.T) {
 	ep1, ep2 := createEndpoints(t)
 
 	pblock, _ := pem.Decode(ORG2.PrivateKey)
+	if pblock == nil {
+		err := errors.New("Failed to Decode Private Key")
+		log.Errorf("Got Unexpected error (%s)\n", err.Error())
+
+		// shut down dummy db
+		closeEndpoints(ep1, ep2)
+		return
+	}
+
 	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
 	require.NoError(t, err)
 
-	hash, _ := hex.DecodeString(ExampleDocument.Hash)
+	hash, err := hex.DecodeString(ExampleDocument.Hash)
+	require.NoError(t, err)
 
 	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash)
 	require.NoError(t, err)
@@ -392,10 +403,20 @@ func TestFalseSignatureValidation(t *testing.T) {
 	ep1, ep2 := createEndpoints(t)
 
 	pblock, _ := pem.Decode(ORG2.PrivateKey)
+	if pblock == nil {
+		err := errors.New("Failed to Decode Private Key")
+		log.Errorf("Got Unexpected error (%s)\n", err.Error())
+
+		// shut down dummy db
+		closeEndpoints(ep1, ep2)
+		return
+	}
+
 	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
 	require.NoError(t, err)
 
-	hash, _ := hex.DecodeString(ExampleDocument.Hash)
+	hash, err := hex.DecodeString(ExampleDocument.Hash)
+	require.NoError(t, err)
 
 	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash)
 	require.NoError(t, err)
