@@ -171,11 +171,63 @@ func (s *RoamingSmartContract) SetOffchainDBConfig(ctx contractapi.TransactionCo
 	return nil
 }
 
+// SetCertificate stores the organization certificates on the ledger
+// ACL restricted to local queries only
+func (s *RoamingSmartContract) SetCertificate(ctx contractapi.TransactionContextInterface, certType string, certData string) error {
+	log.Debugf("%s()", util.FunctionName())
+
+	// ACL restricted to local queries only
+	if !acl.LocalCall(ctx) {
+		return errorcode.NonLocalAccessDenied.LogReturn()
+	}
+
+	// get caller msp
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
+	}
+
+	// cert storage location:
+	storageLocation, err := ctx.GetStub().CreateCompositeKey("msp~configtype~data", []string{invokingMSPID, "certificates", certType})
+	if err != nil {
+		return errorcode.Internal.WithMessage("failed to get create composite key, %v", err).LogReturn()
+	}
+
+	// store given certs
+	err = ctx.GetStub().PutState(storageLocation, []byte(certData))
+	if err != nil {
+		return errorcode.Internal.WithMessage("failed to store certificate  data, %v", err).LogReturn()
+	}
+
+	// all fine
+	return nil
+}
+
+// GetCertificate retrieves the certificate for a given organization from the ledger
+func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContextInterface, msp string, certType string) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
+
+	// cert storage location:
+	storageLocation, err := ctx.GetStub().CreateCompositeKey("msp~configtype~data", []string{msp, "certificates", certType})
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to create composite key, %v", err).LogReturn()
+	}
+
+	// store given certs
+	certData, err := ctx.GetStub().GetState(storageLocation)
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to get certificate  data, %v", err).LogReturn()
+	}
+
+	// all fine
+	return string(certData), nil
+}
+
 // GetEvaluateTransactions returns functions of RoamingSmartContract to be tagged as evaluate (=query)
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"GetOffchainDBConfig", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
+	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
 }
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
