@@ -21,11 +21,6 @@ EOF
 attr_hex=$(echo -n '{"attrs":{"CanSignDocument":"yes"}}' | xxd -ps -c 200 | tr -d '\n')
 echo -ne "[default]\n1.2.3.4.5.6.7.8.1=DER:$attr_hex\n" > user.ext
 
-#add ca db
-touch index.attr
-touch index
-echo 01 > serial
-
 # create ca 
 openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -nodes -out root.csr -keyout root.key  -subj "/CN=ROOT@$ORG/C=DE/ST=NRW/L=Bielefeld/O=$ORG/OU=${ORG}OU" 
 openssl x509 -signkey root.key -days 365 -req -in root.csr -out root.pem  --extfile ca.ext
