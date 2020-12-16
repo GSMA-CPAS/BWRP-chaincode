@@ -203,8 +203,8 @@ func (s *RoamingSmartContract) SetCertificate(ctx contractapi.TransactionContext
 	return nil
 }
 
-// getCertificate retrieves the certificate for a given organization from the ledger
-func (s *RoamingSmartContract) getCertificate(ctx contractapi.TransactionContextInterface, msp string, certType string) (string, error) {
+// GetCertificate retrieves the certificate for a given organization from the ledger
+func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContextInterface, msp string, certType string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
 	// cert storage location:
@@ -227,7 +227,7 @@ func (s *RoamingSmartContract) getCertificate(ctx contractapi.TransactionContext
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"GetOffchainDBConfig", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
+	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
 }
 
 // CreateDocumentID creates a DocumentID and verifies that is has not been used yet
