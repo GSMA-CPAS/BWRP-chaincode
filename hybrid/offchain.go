@@ -174,11 +174,6 @@ func (s *RoamingSmartContract) SetOffchainDBConfig(ctx contractapi.TransactionCo
 func (s *RoamingSmartContract) SetCertificate(ctx contractapi.TransactionContextInterface, certType string, certData string) error {
 	log.Debugf("%s(%s, ...)", util.FunctionName(), certType)
 
-	// ACL restricted to local queries only
-	if !acl.LocalCall(ctx) {
-		return errorcode.NonLocalAccessDenied.LogReturn()
-	}
-
 	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
