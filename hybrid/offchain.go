@@ -227,22 +227,22 @@ func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContext
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateDocumentID", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentIDs"}
+	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentReferenceIDs"}
 }
 
-// CreateDocumentID creates a DocumentID and verifies that is has not been used yet
-func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionContextInterface) (string, error) {
+// createReferenceID creates a referenceID and verifies that is has not been used yet
+func (s *RoamingSmartContract) createReferenceID(ctx contractapi.TransactionContextInterface) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
 	// TODO: verify that the golang crypto lib returns random numbers that are good enough to be used here!
 	rand32 := make([]byte, 32)
 	_, err := rand.Read(rand32)
 	if err != nil {
-		return "", errorcode.Internal.WithMessage("failed to generate documentID, %v", err).LogReturn()
+		return "", errorcode.Internal.WithMessage("failed to generate referenceID, %v", err).LogReturn()
 	}
 
 	// encode random numbers to hex string
-	documentID := hex.EncodeToString(rand32)
+	referenceID := hex.EncodeToString(rand32)
 
 	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
@@ -250,8 +250,8 @@ func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionConte
 		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
-	// make sure that there is no such document id for this MSP on the ledger yet:
-	storageKey, err := s.CreateStorageKey(invokingMSPID, documentID)
+	// make sure that there is no such referenceID for this MSP on the ledger yet:
+	storageKey, err := s.CreateStorageKey(invokingMSPID, referenceID)
 	if err != nil {
 		// it is safe to return local errors
 		return "", err
@@ -263,25 +263,25 @@ func (s *RoamingSmartContract) CreateDocumentID(ctx contractapi.TransactionConte
 	}
 
 	if data != nil {
-		return "", errorcode.DocumentIDExists.WithMessage("data for this documentID %s already exists", documentID).LogReturn()
+		return "", errorcode.ReferenceIDExists.WithMessage("data for this referenceID %s already exists", referenceID).LogReturn()
 	}
 
-	// fine, data does not exist on ledger -> the calulated documentID is ok
-	return documentID, nil
+	// fine, data does not exist on ledger -> the calulated referenceID is ok
+	return referenceID, nil
 }
 
-// CreateStorageKey returns the hidden key used for hidden communication based on a documentID and the targetMSP
-func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, documentID string) (string, error) {
+// CreateStorageKey returns the hidden key used for hidden communication based on a referenceID and the targetMSP
+func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, referenceID string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
-	if len(documentID) != 64 {
-		return "", errorcode.DocumentIDInvalid.WithMessage("invalid input size of documentID is invalid as %d != 64", len(documentID)).LogReturn()
+	if len(referenceID) != 64 {
+		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
 	}
 
 	if len(targetMSPID) == 0 {
 		return "", errorcode.TargetMSPInvalid.WithMessage("invalid input, targetMSPID is empty").LogReturn()
 	}
-	hash := sha256.Sum256([]byte(targetMSPID + documentID))
+	hash := sha256.Sum256([]byte(targetMSPID + referenceID))
 	return hex.EncodeToString(hash[:]), nil
 }
 
@@ -565,12 +565,14 @@ func (s *RoamingSmartContract) StoreDocumentHash(ctx contractapi.TransactionCont
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
 // payload is a DataPayload object that contains a nonce and the payload
-func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, documentID string, documentBase64 string) (string, error) {
+func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, documentBase64 string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
-	// verify passed data
-	if len(documentID) != 64 {
-		return "", errorcode.DocumentIDInvalid.WithMessage("invalid input size of documentID is invalid as %d != 64", len(documentID)).LogReturn()
+	// create a referenceID
+	referenceID, err := s.createReferenceID()
+	if err != nil {
+		// it is sagfe to forward local errors
+		return "", err	
 	}
 
 	// get caller msp
@@ -612,7 +614,7 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// store data in offchain db
-	storedDataHash, err := util.OffchainDatabaseStore(uri, documentID, document)
+	storedDataHash, err := util.OffchainDatabaseStore(uri, referenceID, document)
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to store data, %v", err).LogReturn()
 	}
@@ -627,9 +629,9 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	return storedDataHash, nil
 }
 
-// FetchPrivateDocument will return a private document identified by its documentID
+// FetchPrivateDocument will return a private document identified by its referenceID
 // ACL restricted to local queries only
-func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) (string, error) {
+func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, referenceID string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
 	// ACL restricted to local queries only
@@ -637,7 +639,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 		return "", errorcode.NonLocalAccessDenied.LogReturn()
 	}
 
-	log.Infof("accessing private document with id " + documentID)
+	log.Infof("accessing private document with referenceID " + referenceID)
 
 	// fetch the configured rest endpoint
 	uri, err := s.getLocalOffchainDBConfig(ctx)
@@ -646,9 +648,9 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// fetch from database
-	data, err := util.OffchainDatabaseFetch(uri, documentID)
+	data, err := util.OffchainDatabaseFetch(uri, referenceID)
 	if err != nil {
-		return "", errorcode.DocumentIDUnknown.WithMessage("db access failed, %v", err).LogReturn()
+		return "", errorcode.ReferenceIDUnknown.WithMessage("db access failed, %v", err).LogReturn()
 	}
 
 	// convert to clean json without couchdb "leftovers"
@@ -661,9 +663,9 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	return string(dataJSON), nil
 }
 
-// DeletePrivateDocument will delete a private document identified by its documentID from the database
+// DeletePrivateDocument will delete a private document identified by its referenceID from the database
 // ACL restricted to local queries only
-func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.TransactionContextInterface, documentID string) error {
+func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.TransactionContextInterface, referenceID string) error {
 	log.Debugf("%s()", util.FunctionName())
 
 	// ACL restricted to local queries only
@@ -671,7 +673,7 @@ func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.Transaction
 		return errorcode.NonLocalAccessDenied.LogReturn()
 	}
 
-	log.Infof("deleting private document with id " + documentID)
+	log.Infof("deleting private document with referenceID " + referenceID)
 
 	// fetch the configured rest endpoint
 	uri, err := s.getLocalOffchainDBConfig(ctx)
@@ -680,7 +682,7 @@ func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.Transaction
 	}
 
 	// fetch from database
-	err = util.OffchainDatabaseDelete(uri, documentID)
+	err = util.OffchainDatabaseDelete(uri, referenceID)
 	if err != nil {
 		return errorcode.Internal.WithMessage("db delete access failed, %v", err).LogReturn()
 	}
@@ -689,9 +691,9 @@ func (s *RoamingSmartContract) DeletePrivateDocument(ctx contractapi.Transaction
 	return nil
 }
 
-// FetchPrivateDocumentIDs will return a list of IDS of the private documents
+// FetchPrivateDocumentReferenceIDs will return a list of referenceIDs of the private documents
 // ACL restricted to local queries only
-func (s *RoamingSmartContract) FetchPrivateDocumentIDs(ctx contractapi.TransactionContextInterface) (string, error) {
+func (s *RoamingSmartContract) FetchPrivateDocumentReferenceIDs(ctx contractapi.TransactionContextInterface) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
 	// ACL restricted to local queries only
@@ -706,7 +708,7 @@ func (s *RoamingSmartContract) FetchPrivateDocumentIDs(ctx contractapi.Transacti
 	}
 
 	// fetch from database
-	ids, err := util.OffchainDatabaseFetchAllDocumentIDs(uri)
+	ids, err := util.OffchainDatabaseFetchAllReferenceIDs(uri)
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("db access failed, %v", err).LogReturn()
 	}
@@ -714,7 +716,7 @@ func (s *RoamingSmartContract) FetchPrivateDocumentIDs(ctx contractapi.Transacti
 	// convert array to json
 	json, err := json.Marshal(ids)
 	if err != nil {
-		return "", errorcode.Internal.WithMessage("failed to convert document IDs to json, %v", err).LogReturn()
+		return "", errorcode.Internal.WithMessage("failed to convert referenceIDs to json, %v", err).LogReturn()
 	}
 
 	return string(json), nil

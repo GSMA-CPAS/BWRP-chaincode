@@ -15,12 +15,12 @@ var (
 	OffchainDBConfig = ErrorCode{"ERROR_OFFCHAIN_DB_CONFIG", ""}
 	// Internal : something inside hyperledger is broken
 	Internal = ErrorCode{"ERROR_INTERNAL", ""}
-	// DocumentIDExists : this document id already exists
-	DocumentIDExists = ErrorCode{"ERROR_DOCUMENT_ID_EXISTS", ""}
-	// DocumentIDInvalid :  this document id is invalid
-	DocumentIDInvalid = ErrorCode{"ERROR_DOCUMENT_ID_INVALID", ""}
-	// DocumentIDUnknown :  this document id is not known
-	DocumentIDUnknown = ErrorCode{"ERROR_DOCUMENT_ID_UNKNOWN", ""}
+	// ReferenceIDExists : this referenceID already exists
+	ReferenceIDExists = ErrorCode{"ERROR_REFERENCE_ID_EXISTS", ""}
+	// ReferenceIDInvalid :  this referenceID is invalid
+	ReferenceIDInvalid = ErrorCode{"ERROR_REFERENCE_ID_INVALID", ""}
+	// ReferenceIDUnknown :  this referenceID is not known
+	ReferenceIDUnknown = ErrorCode{"ERROR_REFERENCE_ID_UNKNOWN", ""}
 	// TargetMSPInvalid : this MSP id is invalid
 	TargetMSPInvalid = ErrorCode{"ERROR_TARGET_MSP_INVALID", ""}
 	// CertInvalid : the supplied certificate is invalid

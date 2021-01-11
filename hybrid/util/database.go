@@ -152,9 +152,9 @@ func OffchainDatabaseDelete(uri string, documentID string) error {
 	return nil
 }
 
-// OffchainDatabaseFetchAllDocumentIDs fetches all document ids from
+// OffchainDatabaseFetchAllReferenceIDs fetches all document ids from
 // the database and returns an array of IDs.
-func OffchainDatabaseFetchAllDocumentIDs(uri string) ([]string, error) {
+func OffchainDatabaseFetchAllReferenceIDs(uri string) ([]string, error) {
 	log.Debugf("%s()", FunctionName())
 
 	// open couchdb connection
