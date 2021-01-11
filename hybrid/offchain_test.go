@@ -39,46 +39,46 @@ type Endpoint struct {
 // add forwarding functions
 // those will make sure that the LOCALMSPID is always equal to the local organization
 // and will additionally allow the calls to be executed in the caller's context
-func (local Endpoint) storePrivateDocument(caller Endpoint, targetMSPID string, documentID string, documentBase64 string) (string, error) {
+func (local Endpoint) storePrivateDocument(caller Endpoint, targetMSPID string, referenceID string, documentBase64 string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.StorePrivateDocument(caller.txContext, targetMSPID, documentID, documentBase64)
+	return local.contract.StorePrivateDocument(caller.txContext, targetMSPID, referenceID, documentBase64)
 }
 
-func (local Endpoint) fetchPrivateDocument(caller Endpoint, documentID string) (string, error) {
+func (local Endpoint) fetchPrivateDocument(caller Endpoint, referenceID string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.FetchPrivateDocument(caller.txContext, documentID)
+	return local.contract.FetchPrivateDocument(caller.txContext, referenceID)
 }
 
-func (local Endpoint) deletePrivateDocument(caller Endpoint, documentID string) error {
+func (local Endpoint) deletePrivateDocument(caller Endpoint, referenceID string) error {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.DeletePrivateDocument(caller.txContext, documentID)
+	return local.contract.DeletePrivateDocument(caller.txContext, referenceID)
 }
 
-func (local Endpoint) fetchPrivateDocumentIDs(caller Endpoint) (string, error) {
+func (local Endpoint) fetchPrivateDocumentReferenceIDs(caller Endpoint) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.FetchPrivateDocumentIDs(caller.txContext)
+	return local.contract.FetchPrivateDocumentReferenceIDs(caller.txContext)
 }
 
-func (local Endpoint) createStorageKey(caller Endpoint, targetMSPID string, documentID string) (string, error) {
+func (local Endpoint) createStorageKey(caller Endpoint, targetMSPID string, referenceID string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.CreateStorageKey(targetMSPID, documentID) // TODO: no tx context in this func?!
+	return local.contract.CreateStorageKey(targetMSPID, referenceID) // TODO: no tx context in this func?!
+}
+
+func (local Endpoint) createReferenceID(caller Endpoint) (string, error) {
+	log.Debugf("%s()", util.FunctionName())
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.CreateReferenceID(caller.txContext)
 }
 
 func (local Endpoint) getOffchainDBConfig(caller Endpoint) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
 	return local.contract.GetOffchainDBConfig(caller.txContext)
-}
-
-func (local Endpoint) createDocumentID(caller Endpoint) (string, error) {
-	log.Debugf("%s()", util.FunctionName())
-	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.CreateDocumentID(caller.txContext)
 }
 
 func (local Endpoint) getSignatures(caller Endpoint, targetMSPID string, key string) (map[string]string, error) {
@@ -179,12 +179,12 @@ func TestPrivateDocumentAccess(t *testing.T) {
 	ep1, ep2 := createEndpoints(t)
 
 	// read private documents on ORG1 with ORG1 tx context
-	response, err := ep1.fetchPrivateDocumentIDs(ep1)
+	response, err := ep1.fetchPrivateDocumentReferenceIDs(ep1)
 	require.NoError(t, err)
 	log.Info(response)
 
 	// read private documents on ORG1 with ORG2 tx context
-	response, err = ep1.fetchPrivateDocumentIDs(ep2)
+	response, err = ep1.fetchPrivateDocumentReferenceIDs(ep2)
 	require.Error(t, err)
 	log.Info(response)
 
@@ -224,22 +224,22 @@ func TestExchangeAndSigning(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	// calc documentID
-	documentID, err := ep1.createDocumentID(ep2)
+	// calc referenceID
+	referenceID, err := ep1.createReferenceID(ep2)
 	require.NoError(t, err)
-	log.Infof("got docID <%s>\n", documentID)
+	log.Infof("got docID <%s>\n", referenceID)
 
 	// QUERY store document on ORG1 (local)
-	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, documentID, ExampleDocument.Data64)
+	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Data64)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, ExampleDocument.Hash)
 
 	// VERIFY that it was written
-	data, err := ep1.fetchPrivateDocument(ep1, documentID)
+	data, err := ep1.fetchPrivateDocument(ep1, referenceID)
 	require.NoError(t, err)
 
 	// just for testing, check all stored doc ids:
-	response, err := ep1.fetchPrivateDocumentIDs(ep1)
+	response, err := ep1.fetchPrivateDocumentReferenceIDs(ep1)
 	require.NoError(t, err)
 	log.Info(response)
 
@@ -250,12 +250,12 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.EqualValues(t, document["data"], ExampleDocument.Data64)
 
 	// QUERY store document on ORG2 (remote)
-	hash, err = ep2.storePrivateDocument(ep1, ORG2.Name, documentID, ExampleDocument.Data64)
+	hash, err = ep2.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Data64)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, ExampleDocument.Hash)
 
 	// QUERY create storage key
-	storagekeyORG1, err := ep1.createStorageKey(ep1, ORG1.Name, documentID)
+	storagekeyORG1, err := ep1.createStorageKey(ep1, ORG1.Name, referenceID)
 	require.NoError(t, err)
 
 	// upload document hash on the ledger
@@ -271,7 +271,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org2 signs document:
 	// QUERY create storage key
-	storagekeyORG2, err := ep2.createStorageKey(ep2, ORG2.Name, documentID)
+	storagekeyORG2, err := ep2.createStorageKey(ep2, ORG2.Name, referenceID)
 	require.NoError(t, err)
 	// create signature (later provided by external API/client)
 	signatureORG2 := `{signer: "User1@ORG2", pem: "-----BEGIN CERTIFICATE--- ...", signature: "0x456..." }`
@@ -282,7 +282,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### (optional) org1 checks signatures of org2 on document:
 	// QUERY create expected key
-	storagekeypartnerORG2, err := ep1.createStorageKey(ep1, ORG2.Name, documentID)
+	storagekeypartnerORG2, err := ep1.createStorageKey(ep1, ORG2.Name, referenceID)
 	require.Equal(t, storagekeyORG2, storagekeypartnerORG2)
 	require.NoError(t, err)
 	// QUERY GetSignatures
@@ -292,7 +292,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### (optional) org2 checks signatures of org1 on document:
 	// QUERY create expected key
-	storagekeypartnerORG1, err := ep2.createStorageKey(ep2, ORG1.Name, documentID)
+	storagekeypartnerORG1, err := ep2.createStorageKey(ep2, ORG1.Name, referenceID)
 	require.NoError(t, err)
 	// QUERY GetSignatures
 	signatures, err = ep2.getSignatures(ep2, ORG1.Name, storagekeypartnerORG1)
@@ -311,27 +311,27 @@ func TestDocumentDelete(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	// calc documentID
-	documentID, err := ep1.createDocumentID(ep2)
+	// calc referenceID
+	referenceID, err := ep1.createReferenceID(ep2)
 	require.NoError(t, err)
-	log.Infof("got docID <%s>\n", documentID)
+	log.Infof("got docID <%s>\n", referenceID)
 
 	// QUERY store document on ORG1 (local)
-	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, documentID, ExampleDocument.Data64)
+	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Data64)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, ExampleDocument.Hash)
 
 	// VERIFY that it was written
-	ids, err := ep1.fetchPrivateDocumentIDs(ep1)
+	ids, err := ep1.fetchPrivateDocumentReferenceIDs(ep1)
 	require.NoError(t, err)
-	require.EqualValues(t, `["`+documentID+`"]`, ids)
+	require.EqualValues(t, `["`+referenceID+`"]`, ids)
 
 	// delete
-	err = ep1.deletePrivateDocument(ep1, documentID)
+	err = ep1.deletePrivateDocument(ep1, referenceID)
 	require.NoError(t, err)
 
 	// VERIFY that it was removed
-	ids, err = ep1.fetchPrivateDocumentIDs(ep1)
+	ids, err = ep1.fetchPrivateDocumentReferenceIDs(ep1)
 	require.NoError(t, err)
 	require.EqualValues(t, `[]`, ids)
 
@@ -347,7 +347,7 @@ func TestErrorHandling(t *testing.T) {
 	// set up proper endpoints
 	ep1, ep2 := createEndpoints(t)
 
-	// calc documentID
+	// calc referenceID
 	_, err := ep1.createStorageKey(ep1, "targetMSP", "invalid_docid")
 	require.Error(t, err)
 	log.Infof("got error string as expected! (%s)\n", err.Error())

@@ -227,11 +227,11 @@ func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContext
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateStorageKey", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentReferenceIDs"}
+	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateStorageKey", "CreateReferenceID", "GetSignatures", "IsValidSignature", "GetStorageLocation", "StoreDocumentHash", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentReferenceIDs"}
 }
 
-// createReferenceID creates a referenceID and verifies that is has not been used yet
-func (s *RoamingSmartContract) createReferenceID(ctx contractapi.TransactionContextInterface) (string, error) {
+// CreateReferenceID creates a referenceID and verifies that is has not been used yet
+func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionContextInterface) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
 	// TODO: verify that the golang crypto lib returns random numbers that are good enough to be used here!
@@ -565,14 +565,12 @@ func (s *RoamingSmartContract) StoreDocumentHash(ctx contractapi.TransactionCont
 // StorePrivateDocument will store contract Data locally
 // this can be called on a remote peer or locally
 // payload is a DataPayload object that contains a nonce and the payload
-func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, documentBase64 string) (string, error) {
+func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionContextInterface, targetMSPID string, referenceID string, documentBase64 string) (string, error) {
 	log.Debugf("%s()", util.FunctionName())
 
-	// create a referenceID
-	referenceID, err := s.createReferenceID()
-	if err != nil {
-		// it is sagfe to forward local errors
-		return "", err	
+	// verify passed data
+	if len(referenceID) != 64 {
+		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
 	}
 
 	// get caller msp
