@@ -35,7 +35,7 @@ func OffchainDatabasePrepare(uri string) error {
 }
 
 // OffchainDatabaseStore stores data in the database
-func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (string, error) {
+func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (string, error) {
 	log.Debugf("%s()", FunctionName())
 
 	// open couchdb connection
@@ -53,14 +53,14 @@ func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (st
 	}
 
 	// check if document already exists:
-	err = db.Contains(documentID)
+	err = db.Contains(referenceID)
 	if err == nil {
-		log.Error("failed to store document. documentID already exists!")
+		log.Error("failed to store document. referenceID already exists!")
 		return "", err
 	}
 
 	// attach a couchdb document to the data
-	data.Document = couchdb.DocumentWithID(documentID)
+	data.Document = couchdb.DocumentWithID(referenceID)
 
 	// store data
 	log.Info("will store document now")
@@ -73,7 +73,7 @@ func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (st
 	// query document again and calculate hash to make sure the store operation was ok
 	log.Info("done. will query document now")
 	queryEntry := OffchainData{}
-	err = couchdb.Load(db, documentID, &queryEntry)
+	err = couchdb.Load(db, referenceID, &queryEntry)
 	if err != nil {
 		log.Errorf("failed to query document: %v", err)
 		return "", err
@@ -88,7 +88,7 @@ func OffchainDatabaseStore(uri string, documentID string, data OffchainData) (st
 }
 
 // OffchainDatabaseFetch fetch data from the database
-func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) {
+func OffchainDatabaseFetch(uri string, referenceID string) (OffchainData, error) {
 	log.Debugf("%s()", FunctionName())
 
 	// prepare data object
@@ -109,14 +109,14 @@ func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) 
 	}
 
 	// check if document already exists:
-	err = db.Contains(documentID)
+	err = db.Contains(referenceID)
 	if err != nil {
-		log.Error("failed to query document. documentID '" + documentID + "' unknown")
+		log.Error("failed to query document. referenceID '" + referenceID + "' unknown")
 		return storedData, err
 	}
 
 	// query data
-	err = couchdb.Load(db, documentID, &storedData)
+	err = couchdb.Load(db, referenceID, &storedData)
 	if err != nil {
 		log.Errorf("failed to query document: %v", err)
 		return storedData, err
@@ -126,7 +126,7 @@ func OffchainDatabaseFetch(uri string, documentID string) (OffchainData, error) 
 }
 
 // OffchainDatabaseDelete fetch data from the database
-func OffchainDatabaseDelete(uri string, documentID string) error {
+func OffchainDatabaseDelete(uri string, referenceID string) error {
 	log.Debugf("%s()", FunctionName())
 
 	// open couchdb connection
@@ -143,7 +143,7 @@ func OffchainDatabaseDelete(uri string, documentID string) error {
 		return err
 	}
 
-	err = db.Delete(documentID)
+	err = db.Delete(referenceID)
 	if err != nil {
 		log.Errorf("failed to delete document: %v", err)
 		return err
@@ -152,9 +152,9 @@ func OffchainDatabaseDelete(uri string, documentID string) error {
 	return nil
 }
 
-// OffchainDatabaseFetchAllDocumentIDs fetches all document ids from
-// the database and returns an array of IDs.
-func OffchainDatabaseFetchAllDocumentIDs(uri string) ([]string, error) {
+// OffchainDatabaseFetchAllReferenceIDs fetches all referenceIDs from
+// the database and returns an array of referenceIDs.
+func OffchainDatabaseFetchAllReferenceIDs(uri string) ([]string, error) {
 	log.Debugf("%s()", FunctionName())
 
 	// open couchdb connection
@@ -171,10 +171,10 @@ func OffchainDatabaseFetchAllDocumentIDs(uri string) ([]string, error) {
 		return []string{}, err
 	}
 
-	// fetch all document ids
+	// fetch all referenceIDs
 	ids, err := db.DocIDs()
 	if err != nil {
-		log.Errorf("failed to query document IDs: %v", err)
+		log.Errorf("failed to query referenceIDs: %v", err)
 		return []string{}, err
 	}
 

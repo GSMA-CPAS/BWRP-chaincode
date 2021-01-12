@@ -8,12 +8,12 @@ import (
 
 // OffchainData struct
 type OffchainData struct {
-	FromMSP    string `json:"fromMSP"`
-	ToMSP      string `json:"toMSP"`
-	Data       string `json:"data"`
-	DataHash   string `json:"dataHash"`
-	TimeStamp  string `json:"timeStamp"`
-	DocumentID string `json:"id"`
+	FromMSP     string `json:"fromMSP"`
+	ToMSP       string `json:"toMSP"`
+	Data        string `json:"data"`
+	DataHash    string `json:"dataHash"`
+	TimeStamp   string `json:"timeStamp"`
+	ReferenceID string `json:"id"`
 	couchdb.Document
 }
 
@@ -26,7 +26,7 @@ func (d OffchainData) MarshalToCleanJSON() ([]byte, error) {
 	type data OffchainData
 	x := data(d)
 	// copy to "custom" id
-	x.DocumentID = x.ID
+	x.ReferenceID = x.ID
 	// filter out unwanted fields
 	x.ID = ""
 	x.Rev = ""
