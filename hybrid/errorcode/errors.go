@@ -33,13 +33,13 @@ var (
 
 // ErrorCode is our custom error
 type ErrorCode struct {
-	code    string
-	message string
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // WithMessage adds a custom message to the error:
 func (e ErrorCode) WithMessage(format string, vars ...interface{}) ErrorCode {
-	e.message = fmt.Sprintf(format, vars...)
+	e.Message = fmt.Sprintf(format, vars...)
 	return e
 }
 
@@ -50,22 +50,26 @@ func (e ErrorCode) LogReturn() error {
 	return err
 }
 
-func jsonEscape(i string) (string, error) {
-	b, err := json.Marshal(i)
-	if err != nil {
-		return "", err
-	}
-	// Trim the beginning and trailing " character
-	return string(b[1 : len(b)-1]), nil
+func (e *ErrorCode) Error() string {
+	return e.ToJSON()
 }
 
-func (e *ErrorCode) Error() string {
-	msg, err := jsonEscape(e.message)
+func (e *ErrorCode) ToJSON() string {
+	msg, err := json.Marshal(e)
 
 	if err != nil {
-		log.Errorf("failed to escape to json, %v", err)
-		msg = "ERROR: could not escape json, see chaincode log for details!"
+		return BadJSON.WithMessage("failed to marshal error. see chaincode log for details!").LogReturn().Error()
 	}
 
-	return fmt.Sprintf(`{ "code": "%s", "message": "%s" }`, e.code, msg)
+	return string(msg)
+}
+
+func FromJSON(e error) (ErrorCode, error) {
+	var errorCode ErrorCode
+	// try to convert a json string back to an error code
+	unmarshallingError := json.Unmarshal([]byte(e.Error()), &errorCode)
+	if unmarshallingError != nil {
+		return ErrorCode{}, BadJSON.WithMessage("failed to unmarshal error string to ErrorCode object. %v", unmarshallingError).LogReturn()
+	}
+	return errorCode, nil
 }

@@ -12,7 +12,7 @@ const offchainDatabaseName = "offchain_data"
 
 // OffchainDatabasePrepare checks wether the offchain db exists and initializes it if necessary
 func OffchainDatabasePrepare(uri string) error {
-	log.Debugf("%s()", FunctionName())
+	log.Debugf("%s()", FunctionName(1))
 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
@@ -36,7 +36,7 @@ func OffchainDatabasePrepare(uri string) error {
 
 // OffchainDatabaseStore stores data in the database
 func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (string, error) {
-	log.Debugf("%s()", FunctionName())
+	log.Debugf("%s()", FunctionName(1))
 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
@@ -80,16 +80,16 @@ func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (s
 	}
 
 	// calc hash
-	sha256 := sha256.Sum256([]byte(queryEntry.Data))
-	dataHash := hex.EncodeToString(sha256[:])
-	log.Info("calculated hash for document " + queryEntry.GetID() + " as " + dataHash)
+	sha256 := sha256.Sum256([]byte(queryEntry.Payload))
+	payloadHash := hex.EncodeToString(sha256[:])
+	log.Info("calculated hash for payload " + queryEntry.GetID() + " as " + payloadHash)
 
-	return dataHash, nil
+	return payloadHash, nil
 }
 
 // OffchainDatabaseFetch fetch data from the database
 func OffchainDatabaseFetch(uri string, referenceID string) (OffchainData, error) {
-	log.Debugf("%s()", FunctionName())
+	log.Debugf("%s()", FunctionName(1))
 
 	// prepare data object
 	var storedData = OffchainData{}
@@ -127,7 +127,7 @@ func OffchainDatabaseFetch(uri string, referenceID string) (OffchainData, error)
 
 // OffchainDatabaseDelete fetch data from the database
 func OffchainDatabaseDelete(uri string, referenceID string) error {
-	log.Debugf("%s()", FunctionName())
+	log.Debugf("%s()", FunctionName(1))
 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
@@ -155,7 +155,7 @@ func OffchainDatabaseDelete(uri string, referenceID string) error {
 // OffchainDatabaseFetchAllReferenceIDs fetches all referenceIDs from
 // the database and returns an array of referenceIDs.
 func OffchainDatabaseFetchAllReferenceIDs(uri string) ([]string, error) {
-	log.Debugf("%s()", FunctionName())
+	log.Debugf("%s()", FunctionName(1))
 
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)

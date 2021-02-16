@@ -1,9 +1,8 @@
 package couchdb
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
+	"hybrid/util"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -47,10 +46,9 @@ func storeData(c echo.Context) error {
 		return err
 	}
 
-	data := document["data"].(string)
-	hash := sha256.Sum256([]byte(data))
-	hashs := hex.EncodeToString(hash[:])
-	log.Infof("done, hash is " + hashs)
+	payload := document["Payload"].(string)
+	payloadHash := util.CalculateHash(payload)
+	log.Infof("done, hash is " + payloadHash)
 
 	// return the hash in the same way as the offchain-db-adapter
 	return c.String(http.StatusOK, `{"ok":true,"id":"`+id+`","rev":"1-ba8d8812afd2ba7be6c81c2e4c90e9c4"}`)
