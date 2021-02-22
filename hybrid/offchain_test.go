@@ -82,11 +82,11 @@ func (local Endpoint) getOffchainDBConfig(caller Endpoint) (string, error) {
 	return local.contract.GetOffchainDBConfig(caller.txContext)
 }
 
-func (local Endpoint) getReferencePayloadLink(caller Endpoint, creatorMSPID string, referenceID string) (string, error) {
+/*func (local Endpoint) getReferencePayloadLink(caller Endpoint, creatorMSPID string, referenceID string) (string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
 	return local.contract.GetReferencePayloadLink(caller.txContext, creatorMSPID, referenceID)
-}
+}*/
 
 func (local Endpoint) getSignatures(caller Endpoint, targetMSPID string, key string) (map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
@@ -284,6 +284,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -390,6 +391,7 @@ func TestStoreDocumentPayloadLink(t *testing.T) {
 
 	// publish reference payload link on the ledger
 	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -433,6 +435,7 @@ func TestDocumentDelete(t *testing.T) {
 
 	// publish reference payload link on the ledger
 	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -487,6 +490,7 @@ func TestSignatureValidation(t *testing.T) {
 
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -514,6 +518,8 @@ func TestFalseSignatureValidation(t *testing.T) {
 
 	// publish reference payload link on the ledger
 	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+	require.NoError(t, err)
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)

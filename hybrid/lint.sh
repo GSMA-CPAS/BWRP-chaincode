@@ -14,4 +14,4 @@ if [ ! -x $LINTER ]; then
     exit
 fi
 
-$LINTER run || echo "--> please fix all errors above!"
+$LINTER run || echo "--> please fix all errors above and re-run this test!"

@@ -781,6 +781,9 @@ func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionCon
 
 	// fetch transaction from history
 	tx, err := historyIterator.Next()
+	if err != nil {
+		return nil, errorcode.Internal.WithMessage("failed to get tx history, %v", err).LogReturn()
+	}
 	result.Timestamp = time.Unix(tx.GetTimestamp().Seconds, int64(tx.GetTimestamp().Nanos)).Format(time.RFC3339)
 
 	// are there more entries?
