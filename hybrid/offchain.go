@@ -32,7 +32,6 @@ import (
 	"hybrid/errorcode"
 	"hybrid/util"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/golang/protobuf/ptypes"
@@ -701,9 +700,10 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	document.ToMSP = targetMSPID
 	document.Payload = payload
 	document.PayloadHash = payloadHash
-	document.BlockchainRef.Type = `hlf`
-	document.BlockchainRef.TxID = ctx.GetStub().GetTxID()
-	document.BlockchainRef.Timestamp = strconv.FormatInt(time.Now().UnixNano(), 10)
+	document.ReferenceID = referenceID
+	// DO NOT store
+	// document.BlockchainRef.*
+	// as it is not available yet
 
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to marshal json").LogReturn()
@@ -731,6 +731,67 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	return storedPayloadHash, nil
 }
 
+// Fetch a blockchain ref for a given referenceID
+// ACL restricted to local queries only
+func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string) (*util.BlockchainRef, error) {
+	var result = util.BlockchainRef{}
+
+	// type is fixed hlf for now
+	result.Type = `hlf`
+
+	// fetch reference payload link
+	referencePayloadLink := util.CalculateHash(referenceID)
+	log.Debugf("%s() got reference payload link key %s", util.FunctionName(1), referencePayloadLink)
+
+	// fetch reference payload link value stored by the creator
+	storedData, err := s.getStorageLocationData(ctx, creatorMSPID, "PAYLOADLINK", referencePayloadLink)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(storedData) != 1 {
+		return nil, errorcode.PayloadLinkMissing.WithMessage("expected 1, got %d payloadlinks (referenceID %s)", len(storedData), referenceID).LogReturn()
+	}
+
+	// txID can be extracted from the storagelocation result
+	for txID := range storedData {
+		// as we previously checked that this has exactly one element, this is safe to do:
+		result.TxID = txID
+		break
+	}
+
+	// the tx timestamp can be fetched from the ledger
+	// note: this requires core.ledger.history.enableHistoryDatabase = true !
+	storedKey, err := ctx.GetStub().CreateCompositeKey(compositeKeyDefinition, []string{creatorMSPID, "PAYLOADLINK", referencePayloadLink, result.TxID})
+	if err != nil {
+		return nil, errorcode.Internal.WithMessage("failed to get create composite key, %v", err).LogReturn()
+	}
+
+	historyIterator, err := ctx.GetStub().GetHistoryForKey(storedKey)
+	if err != nil {
+		return nil, errorcode.Internal.WithMessage("failed to get tx history for key %s, %v", storedKey, err).LogReturn()
+	}
+	defer historyIterator.Close()
+
+	// results should be exactly one entry!
+	if !historyIterator.HasNext() {
+		// no entry?!
+		return nil, errorcode.Internal.WithMessage("no tx history for txID %s. Please set core.ledger.history.enableHistoryDatabase=true!", result.TxID).LogReturn()
+	}
+
+	// fetch transaction from history
+	tx, err := historyIterator.Next()
+	result.Timestamp = time.Unix(tx.GetTimestamp().Seconds, int64(tx.GetTimestamp().Nanos)).Format(time.RFC3339)
+
+	// are there more entries?
+	if historyIterator.HasNext() {
+		return nil, errorcode.Internal.WithMessage("to many history entries for txID %s. this is really bad!", result.TxID).LogReturn()
+	}
+
+	// all fine
+	return &result, nil
+}
+
 // FetchPrivateDocument will return a private document identified by its referenceID
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionContextInterface, referenceID string) (string, error) {
@@ -754,6 +815,14 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	if err != nil {
 		return "", errorcode.ReferenceIDUnknown.WithMessage("db access failed, %v", err).LogReturn()
 	}
+
+	// nice, this document contains the main fields
+	// let's add the blockchain reference stuff
+	blockchainRef, err := s.fetchBlockchainRef(ctx, data.FromMSP, referenceID)
+	if err != nil {
+		return "", err
+	}
+	data.BlockchainRef = *blockchainRef
 
 	// convert to clean json without couchdb "leftovers"
 	dataJSON, err := data.MarshalToCleanJSON()

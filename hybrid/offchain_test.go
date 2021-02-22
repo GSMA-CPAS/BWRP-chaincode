@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"hybrid/errorcode"
 	"hybrid/test/chaincode"
 	couchdb "hybrid/test/couchdb_dummy"
 	. "hybrid/test/data"
@@ -269,14 +270,26 @@ func TestExchangeAndSigning(t *testing.T) {
 	// calc referenceID
 	referenceID, err := ep1.createReferenceID(ep2)
 	require.NoError(t, err)
-	log.Infof("got docID <%s>\n", referenceID)
+	log.Infof("got referenceID <%s>\n", referenceID)
 
 	// QUERY store document on ORG1 (local)
 	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Payload)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, ExampleDocument.PayloadHash)
 
-	// VERIFY that it was written
+	// QUERY store document on ORG2 (remote)
+	hash, err = ep2.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Payload)
+	require.NoError(t, err)
+	require.EqualValues(t, hash, ExampleDocument.PayloadHash)
+
+	// PUBLISH reference payload link on the ledger
+	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// VERIFY that ORG1 stored the document
 	dataJSON, err := ep1.fetchPrivateDocument(ep1, referenceID)
 	require.NoError(t, err)
 
@@ -288,34 +301,22 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 	log.Info(response)
 
-	// QUERY store document on ORG2 (remote)
-	hash, err = ep2.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Payload)
-	require.NoError(t, err)
-	require.EqualValues(t, hash, ExampleDocument.PayloadHash)
-
-	// VERIFY that it was written
+	// VERIFY that ORG2 stored the document
 	dataJSON, err = ep2.fetchPrivateDocument(ep2, referenceID)
 	require.NoError(t, err)
 
 	// VERIFY that the data store matches the uploaded data
 	verifyData(t, dataJSON, &ExampleDocument)
 
-	// QUERY create storage key
-	storagekeyORG1, err := ep1.createStorageKey(ep1, ORG1.Name, referenceID)
-	require.NoError(t, err)
-
-	// publish reference payload link on the ledger
-	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
-	referenceKey := referencePayloadLink[0]
-	referenceValue := referencePayloadLink[1]
-	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
-	require.NoError(t, err)
-
 	// ### org1 signs document:
 	signaturePayload := chaincode.CreateSignaturePayload(ORG1.Name, referenceID, referenceValue)
 	signature, err := chaincode.SignPayload(signaturePayload, ORG1.PrivateKey, ORG1.UserCertificate)
 	require.NoError(t, err)
 	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+
+	// QUERY create storage key
+	storagekeyORG1, err := ep1.createStorageKey(ep1, ORG1.Name, referenceID)
 	require.NoError(t, err)
 
 	// INVOKE storeSignature (here only org1, can also be all endorsers)
@@ -367,6 +368,54 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestStoreDocumentPayloadLink(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	defer cleanupFunc(t)
+
+	// calc referenceID
+	referenceID, err := ep1.createReferenceID(ep2)
+	require.NoError(t, err)
+	log.Infof("got referenceID <%s>\n", referenceID)
+
+	// QUERY store document on ORG1 (local)
+	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Payload)
+	require.NoError(t, err)
+	require.EqualValues(t, hash, ExampleDocument.PayloadHash)
+
+	// readback should result in a payloadlink missing error
+	_, err = ep1.fetchPrivateDocument(ep1, referenceID)
+	require.Error(t, err)
+	require.True(t, errorcode.PayloadLinkMissing.Matches(err))
+
+	// publish reference payload link on the ledger
+	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// readback should now work
+	dataJSON, err := ep1.fetchPrivateDocument(ep1, referenceID)
+	require.NoError(t, err)
+
+	// try to parse the data
+	var data util.OffchainData
+	err = json.Unmarshal([]byte(dataJSON), &data)
+	require.NoError(t, err)
+
+	require.EqualValues(t, data.FromMSP, "ORG1")
+	require.EqualValues(t, data.ToMSP, "ORG2")
+	require.EqualValues(t, data.Payload, ExampleDocument.Payload)
+	require.EqualValues(t, data.PayloadHash, ExampleDocument.PayloadHash)
+	require.EqualValues(t, data.ReferenceID, referenceID)
+
+	require.EqualValues(t, data.BlockchainRef.Type, `hlf`)
+	// todo: check those as well!
+	// require.EqualValues(t, data.BlockchainRef.TxID, txID)
+	// require.EqualValues(t, data.BlockchainRef.Timestamp, timestamp)
+
+}
 func TestDocumentDelete(t *testing.T) {
 	// set up
 	cleanupFunc, ep1, ep2 := setupTestCase(t)
@@ -381,6 +430,13 @@ func TestDocumentDelete(t *testing.T) {
 	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Payload)
 	require.NoError(t, err)
 	require.EqualValues(t, hash, ExampleDocument.PayloadHash)
+
+	// publish reference payload link on the ledger
+	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
 
 	// VERIFY that it was written
 	dataJSON, err := ep1.fetchPrivateDocument(ep1, referenceID)
@@ -426,7 +482,10 @@ func TestSignatureValidation(t *testing.T) {
 	require.NoError(t, err)
 	log.Infof("got referenceId <%s>\n", referenceID)
 
-	// publish reference payload link on the ledger
+	// skip the upload of the documents to both peers
+	// here as they are not needed in this test
+
+	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]

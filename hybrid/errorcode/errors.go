@@ -15,6 +15,8 @@ var (
 	OffchainDBConfig = ErrorCode{"ERROR_OFFCHAIN_DB_CONFIG", ""}
 	// Internal : something inside hyperledger is broken
 	Internal = ErrorCode{"ERROR_INTERNAL", ""}
+	// Payloadlink : no payload link found
+	PayloadLinkMissing = ErrorCode{"ERROR_PAYLOADLINK_MISSING", ""}
 	// ReferenceIDExists : this referenceID already exists
 	ReferenceIDExists = ErrorCode{"ERROR_REFERENCE_ID_EXISTS", ""}
 	// ReferenceIDInvalid :  this referenceID is invalid
@@ -72,4 +74,15 @@ func FromJSON(e error) (ErrorCode, error) {
 		return ErrorCode{}, BadJSON.WithMessage("failed to unmarshal error string to ErrorCode object. %v", unmarshallingError).LogReturn()
 	}
 	return errorCode, nil
+}
+
+func (e *ErrorCode) Matches(err error) bool {
+	// try to parse error as custom error:
+	customErr, err := FromJSON(err)
+	if err != nil {
+		log.Error(err)
+		return false
+	}
+
+	return customErr.Code == e.Code
 }
