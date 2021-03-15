@@ -281,6 +281,33 @@ func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, referenceID 
 	return storageKey, nil
 }
 
+func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string, payloadHash string) (bool, error) {
+	log.Debugf("%s(%s, %s, %s)", util.FunctionName(1), creatorMSPID, referenceID, payloadHash)
+
+	// ACL restricted to local queries only
+	if !acl.LocalCall(ctx) {
+		return false, errorcode.NonLocalAccessDenied.LogReturn()
+	}
+
+	// fetch data published on ledger
+	ledgerPayloadLink, err := s.GetReferencePayloadLink(ctx, creatorMSPID, referenceID)
+	if err != nil {
+		return false, err
+	}
+
+	// calculate expeced data based on payload hash
+	expectedPayloadLink := util.CalculateHash(util.HashConcat(referenceID, payloadHash))
+
+	// verify ledger matches the payloadhash
+	if expectedPayloadLink == ledgerPayloadLink {
+		// all fine!
+		return true, nil
+	}
+
+	// something failed
+	return false, nil
+}
+
 // CreateReferencePayloadLink returns the reference and payload link based on a referenceID and the payloadHash
 func (s *RoamingSmartContract) CreateReferencePayloadLink(referenceID string, payloadHash string) ([2]string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), referenceID, payloadHash)
@@ -541,6 +568,8 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 // Get the referencePayloadLink
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) GetReferencePayloadLink(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string) (string, error) {
+	log.Debugf("%s(%s, %s)", util.FunctionName(1), creatorMSPID, referenceID)
+
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
 		return "", errorcode.NonLocalAccessDenied.LogReturn()
@@ -559,7 +588,7 @@ func (s *RoamingSmartContract) GetReferencePayloadLink(ctx contractapi.Transacti
 
 	// check if there is no document
 	if len(storedData) != 1 {
-		return "", errorcode.Internal.WithMessage("stored payload link count invalid, expected 1, got %d", len(storedData)).LogReturn()
+		return "", errorcode.PayloadLinkMissing.WithMessage("expected 1, got %d payloadlinks (referenceID %s)", len(storedData), referenceID).LogReturn()
 	}
 
 	// extract the stored hash, the check above made sure that there is only one entry
@@ -734,6 +763,8 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 // Fetch a blockchain ref for a given referenceID
 // ACL restricted to local queries only
 func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string) (*util.BlockchainRef, error) {
+	log.Debugf("%s(%s, %s)", util.FunctionName(1), creatorMSPID, referenceID)
+
 	var result = util.BlockchainRef{}
 
 	// type is fixed hlf for now
@@ -817,6 +848,24 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	data, err := util.OffchainDatabaseFetch(uri, referenceID)
 	if err != nil {
 		return "", errorcode.ReferenceIDUnknown.WithMessage("db access failed, %v", err).LogReturn()
+	}
+
+	// re-verify data hash:
+	expectedPayloadHash := util.CalculateHash(data.Payload)
+	payloadHash := data.PayloadHash
+	if payloadHash != expectedPayloadHash {
+		return "", errorcode.Internal.WithMessage("hash mismatch %s != %s", payloadHash, expectedPayloadHash).LogReturn()
+	}
+
+	// check if this document matches to what was published on the ledger
+	referencePayloadLinkValid, err := s.verifyReferencePayloadLink(ctx, data.FromMSP, referenceID, expectedPayloadHash)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+
+	if !referencePayloadLinkValid {
+		return "", errorcode.PayloadLinkInvalid.WithMessage("failed to verify payloadlink on ledger").LogReturn()
 	}
 
 	// nice, this document contains the main fields

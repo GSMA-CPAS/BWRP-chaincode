@@ -17,6 +17,8 @@ var (
 	Internal = ErrorCode{"ERROR_INTERNAL", ""}
 	// Payloadlink : no payload link found
 	PayloadLinkMissing = ErrorCode{"ERROR_PAYLOADLINK_MISSING", ""}
+	// Payloadlink : mismatch
+	PayloadLinkInvalid = ErrorCode{"ERROR_PAYLOADLINK_INVALID", ""}
 	// ReferenceIDExists : this referenceID already exists
 	ReferenceIDExists = ErrorCode{"ERROR_REFERENCE_ID_EXISTS", ""}
 	// ReferenceIDInvalid :  this referenceID is invalid
