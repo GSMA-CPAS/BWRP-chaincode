@@ -418,6 +418,37 @@ func TestStoreDocumentPayloadLink(t *testing.T) {
 	// require.EqualValues(t, data.BlockchainRef.Timestamp, timestamp)
 
 }
+
+// publish a bad payloadlink and make sure we detect it
+func TestStoreBadDocumentPayloadLink(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	defer cleanupFunc(t)
+
+	// calc referenceID
+	referenceID, err := ep1.createReferenceID(ep2)
+	require.NoError(t, err)
+	log.Infof("got referenceID <%s>\n", referenceID)
+
+	// QUERY store document on ORG1 (local)
+	hash, err := ep1.storePrivateDocument(ep1, ORG2.Name, referenceID, ExampleDocument.Payload)
+	require.NoError(t, err)
+	require.EqualValues(t, hash, ExampleDocument.PayloadHash)
+
+	// publish a BAD reference payload link on the ledger
+	referencePayloadLink, err := ep1.createReferencePayloadLink(ep1, referenceID, "bad")
+	require.NoError(t, err)
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep1.invokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// readback should detect this bad payloadlink
+	_, err = ep1.fetchPrivateDocument(ep1, referenceID)
+	require.Error(t, err)
+	require.True(t, errorcode.PayloadLinkInvalid.Matches(err))
+}
+
 func TestDocumentDelete(t *testing.T) {
 	// set up
 	cleanupFunc, ep1, ep2 := setupTestCase(t)
