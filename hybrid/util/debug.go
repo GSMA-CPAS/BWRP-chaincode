@@ -5,9 +5,9 @@ import (
 )
 
 // FunctionName returns the name of the callee function
-func FunctionName() string {
+func FunctionName(stackpos int) string {
 	// pc, file, line, ..
-	programCounter, _, _, _ := runtime.Caller(1)
+	programCounter, _, _, _ := runtime.Caller(stackpos)
 	fn := runtime.FuncForPC(programCounter)
 	//return fmt.Sprintf("%s():%d ", fn.Name(), line)
 	return fn.Name()

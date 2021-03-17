@@ -1,23 +1,22 @@
 package data
 
 import (
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
+	"hybrid/util"
 )
 
 // Document structure
 type Document struct {
-	Data64 string
-	Hash   string
+	Payload     string
+	PayloadHash string
 }
 
 var data = "data1234"
-var data64 = base64.StdEncoding.EncodeToString([]byte(data))
-var tmp = sha256.Sum256([]byte(data64))
+var payload = base64.StdEncoding.EncodeToString([]byte(data))
+var payloadHash = util.CalculateHash(payload)
 
 // ExampleDocument : a test document:
 var ExampleDocument = Document{
-	Data64: data64,
-	Hash:   hex.EncodeToString(tmp[:]),
+	Payload:     payload,
+	PayloadHash: payloadHash,
 }

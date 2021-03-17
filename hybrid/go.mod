@@ -3,13 +3,13 @@ module hybrid
 go 1.15
 
 require (
-	github.com/cloudflare/cfssl v0.0.0-20190510060611-9c027c93ba9e
 	github.com/golang/protobuf v1.4.2
 	github.com/google/go-cmp v0.5.2 // indirect
 	github.com/google/uuid v1.1.2
 	github.com/hyperledger/fabric-chaincode-go v0.0.0-20200728190242-9b3ae92d8664
 	github.com/hyperledger/fabric-contract-api-go v1.1.0
 	github.com/hyperledger/fabric-protos-go v0.0.0-20200804194919-0c472b9cf543
+	github.com/json-iterator/go v1.1.10
 	github.com/kr/text v0.2.0 // indirect
 	github.com/labstack/echo/v4 v4.1.16
 	github.com/leesper/couchdb-golang v1.2.1
