@@ -657,6 +657,12 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 		// add Signature
 		results[txID]["signature"] = signatureObject.Signature
 
+		// add algorithm
+		results[txID]["algorithm"] = signatureObject.Algorithm
+
+		// add certificate
+		results[txID]["certificate"] = signatureObject.Certificate
+
 		// add timestamp of signature
 		results[txID]["timestamp"] = signatureObject.Timestamp
 
