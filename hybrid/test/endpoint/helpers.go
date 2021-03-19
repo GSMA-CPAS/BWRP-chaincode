@@ -132,6 +132,12 @@ func (local Endpoint) InvokeStoreSignature(caller Endpoint, key string, signatur
 	return err
 }
 
+func (local Endpoint) VerifyReferencePayloadLink(caller Endpoint, creatorMSPID string, referenceID string, payloadHash string) (bool, error) {
+	log.Debugf("%s()", util.FunctionName(1))
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.VerifyReferencePayloadLink(caller.txContext, creatorMSPID, referenceID, payloadHash)
+}
+
 func CreateEndpoints(t *testing.T) (Endpoint, Endpoint) {
 	// set loglevel
 	//log.SetLevel(log.InfoLevel)

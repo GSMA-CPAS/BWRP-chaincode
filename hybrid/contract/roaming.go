@@ -190,6 +190,7 @@ func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
 		"StorePrivateDocument",
 		"FetchPrivateDocument",
 		"FetchPrivateDocumentReferenceIDs",
+		"VerifyReferencePayloadLink",
 	}
 }
 
@@ -251,7 +252,7 @@ func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, referenceID 
 	return storageKey, nil
 }
 
-func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string, payloadHash string) (bool, error) {
+func (s *RoamingSmartContract) VerifyReferencePayloadLink(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string, payloadHash string) (bool, error) {
 	log.Debugf("%s(%s, %s, %s)", util.FunctionName(1), creatorMSPID, referenceID, payloadHash)
 
 	// ACL restricted to local queries only
@@ -834,7 +835,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// check if this document matches to what was published on the ledger
-	referencePayloadLinkValid, err := s.verifyReferencePayloadLink(ctx, data.FromMSP, referenceID, expectedPayloadHash)
+	referencePayloadLinkValid, err := s.VerifyReferencePayloadLink(ctx, data.FromMSP, referenceID, expectedPayloadHash)
 	if err != nil {
 		// it is safe to forward local errors
 		return "", err

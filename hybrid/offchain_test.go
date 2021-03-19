@@ -218,6 +218,11 @@ func TestStoreDocumentPayloadLink(t *testing.T) {
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
 	require.NoError(t, err)
 
+	// also check the verify function says true as well:
+	manualTest, err := ep1.VerifyReferencePayloadLink(ep1, "ORG1", referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+	require.True(t, manualTest)
+
 	// readback should now work
 	dataJSON, err := ep1.FetchPrivateDocument(ep1, referenceID)
 	require.NoError(t, err)
@@ -263,6 +268,11 @@ func TestStoreBadDocumentPayloadLink(t *testing.T) {
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
 	require.NoError(t, err)
+
+	// also check the verify function says false as well:
+	manualTest, err := ep1.VerifyReferencePayloadLink(ep1, "ORG1", referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+	require.False(t, manualTest)
 
 	// readback should detect this bad payloadlink
 	_, err = ep1.FetchPrivateDocument(ep1, referenceID)
