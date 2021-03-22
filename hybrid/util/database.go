@@ -3,6 +3,7 @@ package util
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 
 	couchdb "github.com/leesper/couchdb-golang"
 	log "github.com/sirupsen/logrus"
@@ -41,22 +42,22 @@ func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (s
 	// open couchdb connection
 	conn, err := couchdb.NewServer(uri)
 	if err != nil {
-		log.Errorf("failed to access couchdb: %v", err)
-		return "", err
+		log.Error(err)
+		return "", errors.New("failed to access couchdb")
 	}
 
 	// open db
 	db, err := conn.Get(offchainDatabaseName)
 	if err != nil {
-		log.Errorf("failed to open database: %v", err)
-		return "", err
+		log.Error(err)
+		return "", errors.New("failed to open database")
 	}
 
 	// check if document already exists:
 	err = db.Contains(referenceID)
 	if err == nil {
-		log.Error("failed to store document. referenceID already exists!")
-		return "", err
+		log.Error(err)
+		return "", errors.New("referenceID exists")
 	}
 
 	// attach a couchdb document to the data
@@ -66,8 +67,8 @@ func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (s
 	log.Info("will store document now")
 	err = couchdb.Store(db, &data)
 	if err != nil {
-		log.Errorf("failed to store document: %v", err)
-		return "", err
+		log.Error(err)
+		return "", errors.New("failed to store document")
 	}
 
 	// query document again and calculate hash to make sure the store operation was ok
@@ -75,8 +76,8 @@ func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (s
 	queryEntry := OffchainData{}
 	err = couchdb.Load(db, referenceID, &queryEntry)
 	if err != nil {
-		log.Errorf("failed to query document: %v", err)
-		return "", err
+		log.Error(err)
+		return "", errors.New("failed to query document")
 	}
 
 	// calc hash
