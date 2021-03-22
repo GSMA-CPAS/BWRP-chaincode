@@ -1,26 +1,4 @@
-/*
-	Chaincode POC
-	- hybrid approach
-	- offchain data storage
-	- hidden communication on chain (only partners can derive storage location)
-	- hlf composite keys for storage
-
-	See offchain_test.go for an example workflow with mocked rest interface.
-
-	A short note on the composite key feature
-	 * for documentation see https://github.com/hyperledger/fabric-chaincode-go/blob/master/shim/interfaces.go
-	 * example:
-	   - let objectType = "owner~type~key~txid"
-	   - key = CreateCompositeKey(objectType, []string{ "ORG1", "SIGNATURE", "12345", "user1"})
-	   - the resulting key result will be "\x00owner~type~key~txid\x00ORG1\x00SIGNATURE\x0012345\x00abcdef\x00"
-
-
-	documentation links:
-	- https://github.com/hyperledger/fabric-contract-api-go/blob/master/tutorials/getting-started.md
-	- https://github.com/hyperledger/fabric-contract-api-go/blob/master/tutorials/using-advanced-features.md
-*/
-
-package main
+package contract
 
 import (
 	"crypto/rand"
@@ -40,28 +18,6 @@ import (
 )
 
 const compositeKeyDefinition string = "owner~type~key~txid"
-const enableDebug = true
-
-func main() {
-	if enableDebug {
-		// set loglevel
-		log.SetLevel(log.DebugLevel)
-	}
-
-	// instantiate chaincode
-	roamingChaincode := initRoamingSmartContract()
-	chaincode, err := contractapi.NewChaincode(roamingChaincode)
-	if err != nil {
-		log.Panicf("failed to create chaincode: %v", err)
-		return
-	}
-
-	// run chaincode
-	err = chaincode.Start()
-	if err != nil {
-		log.Panicf("failed to start chaincode: %v", err)
-	}
-}
 
 // RoamingSmartContract creates a new hlf contract api
 type RoamingSmartContract struct {
@@ -70,7 +26,7 @@ type RoamingSmartContract struct {
 
 var contract *RoamingSmartContract
 
-func initRoamingSmartContract() *RoamingSmartContract {
+func InitRoamingSmartContract() *RoamingSmartContract {
 	if contract != nil {
 		return contract
 	}
@@ -220,7 +176,21 @@ func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContext
 // see https://godoc.org/github.com/hyperledger/fabric-contract-api-go/contractapi#SystemContract.GetEvaluateTransactions
 // note: this is just a hint for the caller, this is not taken into account during invocation
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
-	return []string{"GetOffchainDBConfig", "GetCertificate", "CreateStorageKey", "CreateReferenceID", "CreateReferencePayloadLink", "GetReferencePayloadLink", "GetSignatures", "IsValidSignature", "GetStorageLocation", "PublishReferencePayloadLink", "StorePrivateDocument", "FetchPrivateDocument", "FetchPrivateDocumentReferenceIDs"}
+	return []string{
+		"GetOffchainDBConfig",
+		"GetCertificate",
+		"CreateStorageKey",
+		"CreateReferenceID",
+		"CreateReferencePayloadLink",
+		"GetReferencePayloadLink",
+		"GetSignatures",
+		"IsValidSignature",
+		"GetStorageLocation",
+		"PublishReferencePayloadLink",
+		"StorePrivateDocument",
+		"FetchPrivateDocument",
+		"FetchPrivateDocumentReferenceIDs",
+	}
 }
 
 // CreateReferenceID creates a referenceID and verifies that is has not been used yet
