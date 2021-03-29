@@ -519,6 +519,31 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		return "", err
 	}
 
+	// get caller msp
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
+	}
+
+	// get all signatures stored for at storage key
+	currentSignatures, err := s.GetSignatures(ctx, invokingMSPID, storageKey)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+
+	// check if certificate was used for signing already
+	for _, storedSignature := range currentSignatures {
+		storedCertificate, err := util.ExtractFieldFromJSON(storedSignature, "certificate")
+		if err != nil {
+			// it is safe to forward local errors
+			return "", err
+		}
+		if storedCertificate == signatureObject.Certificate {
+			return "", errorcode.CertAlreadyExists.WithMessage("certificate was used for signing already").LogReturn()
+		}
+	}
+
 	// fetch and store tx timestamp
 	timestamp, err := ctx.GetStub().GetTxTimestamp()
 	if err != nil {
