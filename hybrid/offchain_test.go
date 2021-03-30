@@ -145,6 +145,10 @@ func TestExchangeAndSigning(t *testing.T) {
 	err = ep1.InvokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
 	require.NoError(t, err)
 
+	// INVOKE storeSignature with same signatureJSON should fail
+	err = ep1.InvokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
+	require.Error(t, err)
+
 	// ### org2 signs document:
 	// QUERY create storage key
 	storagekeyORG2, err := ep2.CreateStorageKey(ep2, ORG2.Name, referenceID)

@@ -519,6 +519,16 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		return "", err
 	}
 
+	// Check if the certificate was used for signing before
+	certificateExists, err := s.signatureExistsForCallerCertificate(ctx, signatureObject.Certificate, storageKey)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+	if certificateExists {
+		return "", errorcode.CertAlreadyExists.WithMessage("certificate was used for signing already").LogReturn()
+	}
+
 	// fetch and store tx timestamp
 	timestamp, err := ctx.GetStub().GetTxTimestamp()
 	if err != nil {
@@ -533,6 +543,35 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	}
 
 	return s.storeData(ctx, storageKey, "SIGNATURE", json)
+}
+
+func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contractapi.TransactionContextInterface, certificate string, storageKey string) (bool, error) {
+	// get caller msp
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return false, errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
+	}
+
+	// get all signatures stored for at storage key
+	currentSignatures, err := s.GetSignatures(ctx, invokingMSPID, storageKey)
+	if err != nil {
+		// it is safe to forward local errors
+		return false, err
+	}
+
+	// check if certificate was used for signing already
+	for _, storedSignature := range currentSignatures {
+		storedCertificate, err := util.ExtractFieldFromJSON(storedSignature, "certificate")
+		if err != nil {
+			// it is safe to forward local errors
+			return false, err
+		}
+		if storedCertificate == certificate {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // Get the referencePayloadLink

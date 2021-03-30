@@ -33,6 +33,8 @@ var (
 	SignatureInvalid = ErrorCode{"ERROR_SIGNATURE_INVALID", ""}
 	// BadJSON : something went wrong when parsing a json string
 	BadJSON = ErrorCode{"ERROR_BAD_JSON", ""}
+	// CertAlreadyExists : certificate was used for signing already
+	CertAlreadyExists = ErrorCode{"ERROR_CERT_ALREADY_EXISTS", ""}
 )
 
 // ErrorCode is our custom error
