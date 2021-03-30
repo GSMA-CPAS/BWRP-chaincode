@@ -520,7 +520,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	}
 
 	// Check if the certificate was used for signing before
-	certificateExists, err := s.certificateExistsForCaller(ctx, signatureObject.Certificate, storageKey)
+	certificateExists, err := s.signatureExistsForCallerCertificate(ctx, signatureObject.Certificate, storageKey)
 	if err != nil {
 		// it is safe to forward local errors
 		return "", err
@@ -545,7 +545,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	return s.storeData(ctx, storageKey, "SIGNATURE", json)
 }
 
-func (s *RoamingSmartContract) certificateExistsForCaller(ctx contractapi.TransactionContextInterface, certificate string, storageKey string) (bool, error) {
+func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contractapi.TransactionContextInterface, certificate string, storageKey string) (bool, error) {
 	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
@@ -570,6 +570,7 @@ func (s *RoamingSmartContract) certificateExistsForCaller(ctx contractapi.Transa
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
