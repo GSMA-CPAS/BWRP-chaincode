@@ -81,6 +81,19 @@ func TestOffchainDBConfig(t *testing.T) {
 	// read back with txcontext ORG2 -> this has to fail!
 	_, err = ep1.GetOffchainDBConfig(ep2)
 	require.Error(t, err)
+
+	// check if verify works
+	err = ep1.CheckOffchainDBConfig(ep1)
+	require.NoError(t, err)
+
+	// break config:
+	url := "http://0.1.2.3/nodb"
+	err = ep1.SetOffchainDBConfig(url)
+	// setting this will fail (connection refused)
+	require.Error(t, err)
+	// as this is broken now, this should fail
+	err = ep1.CheckOffchainDBConfig(ep1)
+	require.Error(t, err)
 }
 
 func TestExchangeAndSigning(t *testing.T) {

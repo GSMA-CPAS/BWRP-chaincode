@@ -78,6 +78,23 @@ func (local Endpoint) GetOffchainDBConfig(caller Endpoint) (string, error) {
 	return local.contract.GetOffchainDBConfig(caller.txContext)
 }
 
+func (local Endpoint) CheckOffchainDBConfig(caller Endpoint) error {
+	log.Debugf("%s()", util.FunctionName(1))
+	os.Setenv("CORE_PEER_LOCALMSPID", caller.org.Name)
+	return local.contract.CheckOffchainDBConfig(caller.txContext)
+}
+
+func (local Endpoint) SetOffchainDBConfig(uri string) error {
+	log.Debugf("%s(%s)", util.FunctionName(1), uri)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
+	// set transient data for setting couchdb config
+	var transient map[string][]byte = make(map[string][]byte)
+	transient["uri"] = []byte(uri)
+	local.stub.TransientMap = transient
+	return local.contract.SetOffchainDBConfig(local.txContext)
+}
+
 /*func (local Endpoint) getReferencePayloadLink(caller Endpoint, creatorMSPID string, referenceID string) (string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
@@ -172,12 +189,9 @@ func ConfigureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	// use context
 	ep.txContext = txContext
 
-	// set transient data for setting couchdb config
-	var transient map[string][]byte = make(map[string][]byte)
+	// store config
 	url := "http://" + ep.org.OffchainDBConfigURI
-	transient["uri"] = []byte(url)
-	mockStub.TransientMap = transient
-	err = ep.contract.SetOffchainDBConfig(ep.txContext)
+	err = ep.SetOffchainDBConfig(url)
 	require.NoError(t, err)
 
 	// read back for debugging and testing

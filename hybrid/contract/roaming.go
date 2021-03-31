@@ -52,6 +52,29 @@ func (s *RoamingSmartContract) GetOffchainDBConfig(ctx contractapi.TransactionCo
 	return config, err
 }
 
+// CheckOffchainDBConfig returns if the database is configured and reachable
+func (s *RoamingSmartContract) CheckOffchainDBConfig(ctx contractapi.TransactionContextInterface) error {
+	log.Debugf("%s()", util.FunctionName(1))
+
+	// fetch the configured rest endpoint
+	uri, err := s.getLocalOffchainDBConfig(ctx)
+	if err != nil {
+		// DO NOT return the actual error here as this is not ACL restricted and can be called by world!
+		log.Error(err)
+		return errorcode.OffchainDBConfig.WithMessage("failed to fetch OffchainDB uri").LogReturn()
+	}
+
+	err = util.OffchainDatabaseCheck(string(uri))
+	if err != nil {
+		// DO NOT return the actual error here as this is not ACL restricted and can be called by world!
+		log.Error(err)
+		return errorcode.Internal.WithMessage("offchaindb check failed").LogReturn()
+	}
+
+	// all fine
+	return nil
+}
+
 // getOffchainDBConfig returns the stored configuration for the rest endpoint
 // this is only allowed to be called locally
 // NOTE: (1) DO NOT expose this as it might leak sensitive network configuration use GetOffchainDBConfig for this.
@@ -178,6 +201,7 @@ func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContext
 func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
 	return []string{
 		"GetOffchainDBConfig",
+		"CheckOffchainDBConfig",
 		"GetCertificate",
 		"CreateStorageKey",
 		"CreateReferenceID",
