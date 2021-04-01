@@ -373,8 +373,13 @@ func TestSignatureValidation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Validating signature
-	err = ep1.IsValidSignature(ep2, ORG1.Name, signaturePayload, signature.Signature, signature.Certificate)
+	err = ep1.IsValidSignature(ep2, ORG1.Name, signaturePayload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.NoError(t, err)
+
+	// Validation requires correct signature algorithm
+	// Correct algorithm is "ECDSA-SHA256" - here "ECDSA-SHA384" is used
+	err = ep1.IsValidSignature(ep2, ORG1.Name, signaturePayload, signature.Signature, "ECDSA-SHA384", signature.Certificate)
+	require.Error(t, err)
 }
 
 func TestFalseSignatureValidation(t *testing.T) {
@@ -416,6 +421,6 @@ fTAO/i0POc1ltcZ7QFY1GTYIaUOBGuYFDJambWQWh7jqcvZf42grSXQ0YvdB
 	require.NoError(t, err)
 
 	// Validating signature
-	err = ep1.IsValidSignature(ep2, ORG1.Name, signaturePayload, signature.Signature, signature.Certificate)
+	err = ep1.IsValidSignature(ep2, ORG1.Name, signaturePayload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.Error(t, err)
 }
