@@ -400,7 +400,7 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 }
 
 // IsValidSignature verifies if a signature is valid based on the the signaturePayload, the certChain, and the signature
-func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, creatorMSPID, signaturePayload, signature, certChainPEM string) error {
+func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, creatorMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM string) error {
 	log.Debugf("%s(%s, ..., %s)", util.FunctionName(1), signature, signaturePayload)
 
 	// get the root certificates for creatorMSP
@@ -423,11 +423,17 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 		return errorcode.CertInvalid.WithMessage("failed to decode signature string").LogReturn()
 	}
 
+	x509signatureAlgorithm, err := certificate.GetSignatureAlgorithmFromString(signatureAlgorithm)
+	if err != nil {
+		// it is safe to forward local errors
+		return err
+	}
+
 	//log.Infof("> checking signaturePayload %s", signaturePayload)
 	//log.Infof("> checking signature %s", signatureBytes)
 
 	// verifies that signature is a valid signature
-	if err = userCert.CheckSignature(userCert.SignatureAlgorithm, []byte(signaturePayload), signatureBytes); err != nil {
+	if err = userCert.CheckSignature(x509signatureAlgorithm, []byte(signaturePayload), signatureBytes); err != nil {
 		return errorcode.SignatureInvalid.WithMessage("signature validation failed, %v", err).LogReturn()
 	}
 	log.Infof("IsValidSignature: Valid")
@@ -707,7 +713,7 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 
 		// verify signature
 		log.Debugf("tx #%s: testing signature %s...", txID, signatureObject.Signature)
-		validationError := s.IsValidSignature(ctx, targetMSPID, signaturePayload, signatureObject.Signature, signatureObject.Certificate)
+		validationError := s.IsValidSignature(ctx, targetMSPID, signaturePayload, signatureObject.Signature, signatureObject.Algorithm, signatureObject.Certificate)
 		if validationError != nil {
 			// this signature is INVALID
 			results[txID]["valid"] = "false"

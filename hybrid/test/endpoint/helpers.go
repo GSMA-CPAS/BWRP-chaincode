@@ -109,10 +109,10 @@ func (local Endpoint) GetSignatures(caller Endpoint, targetMSPID string, key str
 	return local.contract.GetSignatures(caller.txContext, targetMSPID, key)
 }
 
-func (local Endpoint) IsValidSignature(caller Endpoint, creatorMSP string, document string, signature string, certListStr string) error {
+func (local Endpoint) IsValidSignature(caller Endpoint, creatorMSP string, document string, signature string, signatureAlgorithm string, certListStr string) error {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.IsValidSignature(caller.txContext, creatorMSP, document, signature, certListStr)
+	return local.contract.IsValidSignature(caller.txContext, creatorMSP, document, signature, signatureAlgorithm, certListStr)
 }
 
 func (local Endpoint) VerifySignatures(caller Endpoint, referenceID string, originMSPID string, targetMSPID string) (map[string]map[string]string, error) {
