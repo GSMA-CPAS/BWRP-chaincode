@@ -35,6 +35,27 @@ func OffchainDatabasePrepare(uri string) error {
 	return error
 }
 
+// OffchainDatabaseCheck verifies that the offchain db exists and is reachable
+func OffchainDatabaseCheck(uri string) error {
+	log.Debugf("%s()", FunctionName(1))
+
+	// open couchdb connection
+	conn, err := couchdb.NewServer(uri)
+	if err != nil {
+		log.Errorf("failed to access couchdb: %v", err)
+		return err
+	}
+
+	// check if db exists
+	exists := conn.Contains(offchainDatabaseName)
+	if exists {
+		log.Info("database exists, will do nothing")
+		return nil
+	}
+
+	return errors.New("offchain db does not exist or is not reachable")
+}
+
 // OffchainDatabaseStore stores data in the database
 func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (string, error) {
 	log.Debugf("%s()", FunctionName(1))
