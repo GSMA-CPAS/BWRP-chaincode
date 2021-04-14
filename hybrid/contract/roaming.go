@@ -569,7 +569,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	return s.storeData(ctx, storageKey, "SIGNATURE", json)
 }
 
-func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contractapi.TransactionContextInterface, certificate string, storageKey string) (bool, error) {
+func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contractapi.TransactionContextInterface, certificateString string, storageKey string) (bool, error) {
 	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
@@ -583,14 +583,27 @@ func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contracta
 		return false, err
 	}
 
+	cert, err := certificate.GetCertificateFromPEM([]byte(certificateString))
+	if err != nil {
+		// it is safe to forward local errors
+		return false, err
+	}
+
 	// check if certificate was used for signing already
 	for _, storedSignature := range currentSignatures {
-		storedCertificate, err := util.ExtractFieldFromJSON(storedSignature, "certificate")
+		storedCertificateString, err := util.ExtractFieldFromJSON(storedSignature, "certificate")
 		if err != nil {
 			// it is safe to forward local errors
 			return false, err
 		}
-		if storedCertificate == certificate {
+
+		storedCertificate, err := certificate.GetCertificateFromPEM([]byte(storedCertificateString))
+		if err != nil {
+			// it is safe to forward local errors
+			return false, err
+		}
+
+		if storedCertificate.SerialNumber.Cmp(cert.SerialNumber) == 0 {
 			return true, nil
 		}
 	}
