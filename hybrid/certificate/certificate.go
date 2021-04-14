@@ -13,15 +13,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func ExtractAlgorithmFromUserCert(input []byte) (string, error) {
+func ExtractAlgorithmFromUserCert(input []byte) (*x509.SignatureAlgorithm, error) {
 	log.Debugf("%s(...)", util.FunctionName(1))
 	chain, err := ChainFromPEM(input)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// try to extract the algorithm from the last cert in chain
-	return chain[len(chain)-1].SignatureAlgorithm.String(), nil
+	return &chain[len(chain)-1].SignatureAlgorithm, nil
 }
 
 func ChainFromPEM(input []byte) ([]*x509.Certificate, error) {

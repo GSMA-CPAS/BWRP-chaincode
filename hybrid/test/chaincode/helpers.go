@@ -4,15 +4,18 @@ package chaincode
 
 import (
 	"bytes"
+	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/sha256"
+	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"hybrid/certificate"
+	"hybrid/errorcode"
 	"hybrid/test/historyshimtest"
 	"hybrid/test/mocks"
 	"hybrid/util"
@@ -94,7 +97,10 @@ func SignPayload(payload string, privateKey string, certChain string) (util.Sign
 	if err != nil {
 		return result, err
 	}
-	result.Algorithm = algorithm
+	result.Algorithm, err = certificate.GetStringFromSignatureAlgorithm(*algorithm)
+	if err != nil {
+		return result, err
+	}
 
 	// create signature
 	pblock, _ := pem.Decode([]byte(privateKey))
@@ -103,12 +109,42 @@ func SignPayload(payload string, privateKey string, certChain string) (util.Sign
 		return result, err
 	}
 
-	// FIXME: use the proper hash as specified in result.Algorithm!
-	// calc hash of document
-	hash := sha256.Sum256([]byte(payload))
+	// The document is hashed and signed using the same algorithm as used for certificate
+	hashAlgorithm, err := certificate.GetHashAlgorithmFromSignatureAlgortithm(*algorithm)
+	if err != nil {
+		return result, err
+	}
 
-	// sign hash of payload
-	signature, err := ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash[:])
+	hashInstance := hashAlgorithm.New()
+	hashInstance.Write([]byte(payload))
+	hash := hashInstance.Sum(nil)
+
+	pubKeyAlgorithm, err := certificate.GetPubKeyAlgorithmFromSignatureAlgortithm(*algorithm)
+	if err != nil {
+		return result, err
+	}
+
+	var signature []byte
+
+	// sign hash of payload according to public key algorithm used in certificate
+	switch *pubKeyAlgorithm {
+	case x509.ECDSA:
+		signature, err = ecdsa.SignASN1(rand.Reader, pkey.(*ecdsa.PrivateKey), hash[:])
+	case x509.RSA:
+		signature, err = rsa.SignPKCS1v15(rand.Reader, pkey.(*rsa.PrivateKey), *hashAlgorithm, hash[:])
+	case x509.DSA:
+		var s util.DsaSignature
+		s.S, s.R, err = dsa.Sign(rand.Reader, pkey.(*dsa.PrivateKey), hash[:])
+		if err != nil {
+			return result, nil
+		}
+		signature, err = asn1.Marshal(s)
+	default:
+		return result, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
+	}
+	if err != nil {
+		return result, err
+	}
 
 	// store signature
 	result.Signature = base64.StdEncoding.EncodeToString(signature)
