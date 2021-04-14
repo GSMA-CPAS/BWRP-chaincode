@@ -7,30 +7,16 @@ import (
 	"hybrid/errorcode"
 )
 
-// largely taken from crypto/x509, unfortunately it isn't exported
+// Strings reflect the x509 standard and are distinct from golang's x509 library string
 var signatureAlgorithmDetails = []struct {
 	algo       x509.SignatureAlgorithm
 	name       string
 	pubKeyAlgo x509.PublicKeyAlgorithm
 	hash       crypto.Hash
 }{
-	{x509.MD2WithRSA, "MD2-RSA", x509.RSA, crypto.Hash(0) /* no value for MD2 */},
-	{x509.MD5WithRSA, "MD5-RSA", x509.RSA, crypto.MD5},
-	{x509.SHA1WithRSA, "SHA1-RSA", x509.RSA, crypto.SHA1},
-	{x509.SHA1WithRSA, "SHA1-RSA", x509.RSA, crypto.SHA1},
-	{x509.SHA256WithRSA, "SHA256-RSA", x509.RSA, crypto.SHA256},
-	{x509.SHA384WithRSA, "SHA384-RSA", x509.RSA, crypto.SHA384},
-	{x509.SHA512WithRSA, "SHA512-RSA", x509.RSA, crypto.SHA512},
-	{x509.SHA256WithRSAPSS, "SHA256-RSAPSS", x509.RSA, crypto.SHA256},
-	{x509.SHA384WithRSAPSS, "SHA384-RSAPSS", x509.RSA, crypto.SHA384},
-	{x509.SHA512WithRSAPSS, "SHA512-RSAPSS", x509.RSA, crypto.SHA512},
-	{x509.DSAWithSHA1, "DSA-SHA1", x509.DSA, crypto.SHA1},
-	{x509.DSAWithSHA256, "DSA-SHA256", x509.DSA, crypto.SHA256},
-	{x509.ECDSAWithSHA1, "ECDSA-SHA1", x509.ECDSA, crypto.SHA1},
-	{x509.ECDSAWithSHA256, "ECDSA-SHA256", x509.ECDSA, crypto.SHA256},
-	{x509.ECDSAWithSHA384, "ECDSA-SHA384", x509.ECDSA, crypto.SHA384},
-	{x509.ECDSAWithSHA512, "ECDSA-SHA512", x509.ECDSA, crypto.SHA512},
-	{x509.PureEd25519, "Ed25519", x509.Ed25519, crypto.Hash(0) /* no pre-hashing */},
+	{x509.DSAWithSHA256, "dsaWithSha256", x509.DSA, crypto.SHA256},
+	{x509.ECDSAWithSHA256, "ecdsaWithSha256", x509.ECDSA, crypto.SHA256},
+	{x509.SHA256WithRSA, "sha256WithRsaEncryption", x509.RSA, crypto.SHA256},
 }
 
 func GetSignatureAlgorithmFromString(name string) (x509.SignatureAlgorithm, error) {
@@ -40,4 +26,31 @@ func GetSignatureAlgorithmFromString(name string) (x509.SignatureAlgorithm, erro
 		}
 	}
 	return -1, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
+}
+
+func GetStringFromSignatureAlgorithm(algo x509.SignatureAlgorithm) (string, error) {
+	for _, details := range signatureAlgorithmDetails {
+		if details.algo == algo {
+			return details.name, nil
+		}
+	}
+	return "", errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
+}
+
+func GetHashAlgorithmFromSignatureAlgortithm(algo x509.SignatureAlgorithm) (*crypto.Hash, error) {
+	for _, details := range signatureAlgorithmDetails {
+		if details.algo == algo {
+			return &details.hash, nil
+		}
+	}
+	return nil, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
+}
+
+func GetPubKeyAlgorithmFromSignatureAlgortithm(algo x509.SignatureAlgorithm) (*x509.PublicKeyAlgorithm, error) {
+	for _, details := range signatureAlgorithmDetails {
+		if details.algo == algo {
+			return &details.pubKeyAlgo, nil
+		}
+	}
+	return nil, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
 }
