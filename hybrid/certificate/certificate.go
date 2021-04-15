@@ -13,7 +13,7 @@ import (
 
 func ExtractAlgorithmFromUserCert(input []byte) (string, error) {
 	log.Debugf("%s(...)", util.FunctionName(1))
-	certificate, err := GetCertificateFromPEM(input)
+	certificate, err := GetLastCertificateFromPEM(input)
 	if err != nil {
 		return "", err
 	}
@@ -22,7 +22,7 @@ func ExtractAlgorithmFromUserCert(input []byte) (string, error) {
 	return certificate.SignatureAlgorithm.String(), nil
 }
 
-func GetCertificateFromPEM(input []byte) (*x509.Certificate, error) {
+func GetLastCertificateFromPEM(input []byte) (*x509.Certificate, error) {
 	chain, err := ChainFromPEM(input)
 	if err != nil {
 		return nil, err

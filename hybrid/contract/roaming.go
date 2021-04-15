@@ -583,7 +583,7 @@ func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contracta
 		return false, err
 	}
 
-	cert, err := certificate.GetCertificateFromPEM([]byte(certificateString))
+	cert, err := certificate.GetLastCertificateFromPEM([]byte(certificateString))
 	if err != nil {
 		// it is safe to forward local errors
 		return false, err
@@ -597,7 +597,7 @@ func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contracta
 			return false, err
 		}
 
-		storedCertificate, err := certificate.GetCertificateFromPEM([]byte(storedCertificateString))
+		storedCertificate, err := certificate.GetLastCertificateFromPEM([]byte(storedCertificateString))
 		if err != nil {
 			// it is safe to forward local errors
 			return false, err
