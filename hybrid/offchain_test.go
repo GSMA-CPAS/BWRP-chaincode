@@ -416,4 +416,14 @@ fTAO/i0POc1ltcZ7QFY1GTYIaUOBGuYFDJambWQWh7jqcvZf42grSXQ0YvdB
 	// Validating signature
 	err = ep1.IsValidSignature(ep2, ORG1.Name, signaturePayload, signature.Signature, signature.Certificate)
 	require.Error(t, err)
+
+	// QUERY create storage key
+	storagekeyORG1, err := ep1.CreateStorageKey(ep1, ORG1.Name, referenceID)
+	require.NoError(t, err)
+
+	// INVOKE storeSignature with faulty certificate should fail
+	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+	err = ep1.InvokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
+	require.Error(t, err)
 }
