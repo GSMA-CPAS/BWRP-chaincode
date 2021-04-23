@@ -1,3 +1,5 @@
+// Copyright the BWRP-chaincode contributors. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 package errorcode
 
 import (
