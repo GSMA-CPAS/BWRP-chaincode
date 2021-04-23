@@ -72,4 +72,3 @@ The following rule governs documentation contributions:
 
 * When creating an issue, try using one of our issue templates which already contain some guidelines on which content is expected to process the issue most efficiently. If no template applies, you can of course also create an issue from scratch.
 
-* LABLEs :- TBD
