@@ -1,3 +1,5 @@
+// Copyright the BWRP-chaincode contributors. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 package main
 
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
