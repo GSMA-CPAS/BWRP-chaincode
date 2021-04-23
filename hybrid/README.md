@@ -16,7 +16,7 @@ This project has adopted the [Contributor Covenant](https://www.contributor-cove
 
 ## How to Contribute
 
-Contribution and feedback is encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](./CONTRIBUTING.md). By participating in this project, you agree to abide by its [Code of Conduct](./CODE_OF_CONDUCT.md) at all times.
+Contribution and feedback is encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](./docs/CONTRIBUTING.md). By participating in this project, you agree to abide by its [Code of Conduct](./docs/CODE_OF_CONDUCT.md) at all times.
 
 ## Contributors
 
