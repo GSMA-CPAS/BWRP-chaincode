@@ -1,4 +1,6 @@
-Copyright (c) 2021 GSMA.
+SPDX-FileCopyrightText: 2021 the BWRP-chaincode contributors.
+
+SPDX-License-Identifier: Apache-2.0
 
 This project is licensed under Apache License, Version 2.0;
 you may not use them except in compliance with the License.
@@ -8,9 +10,8 @@ Contributors:
 
 Sebastian Meyer zu Borgsen [smeyerzu], Deutsche Telekom IT GmbH
 Simon Schulz [sschulz-t], Deutsche Telekom IT GmbH
-Martin Westerkamp, [informartin], Telekom Innovation Laboratories
-Zhen Kong, [zkong-gsma], GSMA
-Dhruv Agarwal, [dhruvagarwal86], Mobileum Inc.
-Tilak Vardhan, [sudo-tilakvardhan], Mobileum Inc.
-Robert Hechwartner, [RoHeck], Deutsche Telekom AG
+Martin Westerkamp [informartin], TU Berlin / Telekom Innovation Laboratories
+Zhen Kong [zkong-gsma], GSMA
+Dhruv Agarwal [dhruvagarwal86], Mobileum Inc.
+Tilak Vardhan [sudo-tilakvardhan], Mobileum Inc.
 

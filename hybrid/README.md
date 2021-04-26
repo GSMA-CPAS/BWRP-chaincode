@@ -1,3 +1,8 @@
+<!--
+ SPDX-FileCopyrightText: 2021 the BWRP-chaincode contributors.
+
+ SPDX-License-Identifier: Apache-2.0
+-->
 # BWRP-chaincode
 
 The chaincode is executed by each orgnaization on at least one Hyperledger Fabric peer.
