@@ -1,5 +1,6 @@
-# This file contains all available configuration options
-# with their default values.
+# SPDX-FileCopyrightText: 2021 the BWRP-chaincode contributors.
+#
+# SPDX-License-Identifier: Apache-2.0
 
 # options for analysis running
 run:
