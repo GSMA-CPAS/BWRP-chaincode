@@ -1,4 +1,8 @@
 #!/bin/bash
+# SPDX-FileCopyrightText: 2021 the BWRP-chaincode contributors.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 echo "> will run gofmt to fix formatting. will fix the following files:"
 gofmt -l .
 gofmt -w .

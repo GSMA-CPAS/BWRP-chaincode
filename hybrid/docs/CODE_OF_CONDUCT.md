@@ -1,6 +1,8 @@
+<!--
+ SPDX-FileCopyrightText: 2021 the BWRP-chaincode contributors.
 
-# Contributor Covenant Code of Conduct
-
+ SPDX-License-Identifier: Apache-2.0
+-->
 ## Our Pledge
 
 We as members, contributors, and leaders pledge to make participation in our

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2021 the BWRP-chaincode contributors.
+//
+// SPDX-License-Identifier: Apache-2.0
 module hybrid
 
 go 1.15

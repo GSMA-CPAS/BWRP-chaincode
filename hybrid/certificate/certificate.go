@@ -1,3 +1,5 @@
+// Copyright the BWRP-chaincode contributors. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 package certificate
 
 import (
@@ -11,15 +13,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func ExtractAlgorithmFromUserCert(input []byte) (string, error) {
+func ExtractAlgorithmFromUserCert(input []byte) (*x509.SignatureAlgorithm, error) {
 	log.Debugf("%s(...)", util.FunctionName(1))
 	certificate, err := GetLastCertificateFromPEM(input)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// try to extract the algorithm from the last cert in chain
-	return certificate.SignatureAlgorithm.String(), nil
+	return &certificate.SignatureAlgorithm, nil
 }
 
 func GetLastCertificateFromPEM(input []byte) (*x509.Certificate, error) {

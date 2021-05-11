@@ -1,8 +1,11 @@
+// Copyright the BWRP-chaincode contributors. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 package util
 
 import (
 	"encoding/json"
 	"hybrid/errorcode"
+	"math/big"
 	"unicode"
 
 	jsoniter "github.com/json-iterator/go"
@@ -27,6 +30,11 @@ type OffchainData struct {
 	BlockchainRef BlockchainRef
 	ReferenceID   string
 	couchdb.Document
+}
+
+// DsaSignature struct
+type DsaSignature struct {
+	R, S *big.Int
 }
 
 // marshal all json to use lowercase camelcase keys
