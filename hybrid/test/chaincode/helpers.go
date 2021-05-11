@@ -116,7 +116,10 @@ func SignPayload(payload string, privateKey string, certChain string) (util.Sign
 	}
 
 	hashInstance := hashAlgorithm.New()
-	hashInstance.Write([]byte(payload))
+	_, err = hashInstance.Write([]byte(payload))
+	if err != nil {
+		return result, err
+	}
 	hash := hashInstance.Sum(nil)
 
 	pubKeyAlgorithm, err := certificate.GetPubKeyAlgorithmFromSignatureAlgortithm(*algorithm)
