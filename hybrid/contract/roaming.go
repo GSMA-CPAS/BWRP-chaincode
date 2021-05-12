@@ -4,6 +4,7 @@ package contract
 
 import (
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -403,15 +404,8 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, creatorMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM string) error {
 	log.Debugf("%s(%s, ..., %s)", util.FunctionName(1), signature, signaturePayload)
 
-	// get the root certificates for creatorMSP
-	rootPEM, err := s.GetCertificate(ctx, creatorMSPID, "root")
-	if err != nil {
-		// it is safe to forward local errors
-		return err
-	}
-
 	// extract and verify user cert based on PEM
-	userCert, err := certificate.GetVerifiedUserCertificate(rootPEM, certChainPEM)
+	userCert, err := s.getUserCertFromCertificateChain(ctx, creatorMSPID, certChainPEM)
 	if err != nil {
 		// it is safe to forward local errors
 		return err
@@ -440,6 +434,19 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 
 	// document is valid
 	return nil
+}
+
+// getUserCertFromCertificateChain verifies if the cert chain is valid, derived from a stored root cert and returnes the user cert
+func (s *RoamingSmartContract) getUserCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string) (*x509.Certificate, error) {
+	// get the root certificates for creatorMSP
+	rootPEM, err := s.GetCertificate(ctx, creatorMSPID, "root")
+	if err != nil {
+		// it is safe to forward local errors
+		return nil, err
+	}
+
+	// extract and verify user cert based on PEM
+	return certificate.GetVerifiedUserCertificate(rootPEM, certChainPEM)
 }
 
 // GetStorageLocation returns the storage location for
@@ -551,8 +558,21 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		return "", err
 	}
 
+	// get caller msp
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
+	}
+
+	// extract and verify user cert based on PEM
+	userCert, err := s.getUserCertFromCertificateChain(ctx, invokingMSPID, signatureObject.Certificate)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+
 	// Check if the certificate was used for signing before
-	certificateExists, err := s.signatureExistsForCallerCertificate(ctx, signatureObject.Certificate, storageKey)
+	certificateExists, err := s.signatureExistsForCertificate(ctx, userCert, invokingMSPID, storageKey)
 	if err != nil {
 		// it is safe to forward local errors
 		return "", err
@@ -577,15 +597,9 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	return s.storeData(ctx, storageKey, "SIGNATURE", json)
 }
 
-func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contractapi.TransactionContextInterface, certificate string, storageKey string) (bool, error) {
-	// get caller msp
-	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
-	if err != nil {
-		return false, errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
-	}
-
+func (s *RoamingSmartContract) signatureExistsForCertificate(ctx contractapi.TransactionContextInterface, cert *x509.Certificate, mspid, storageKey string) (bool, error) {
 	// get all signatures stored for at storage key
-	currentSignatures, err := s.GetSignatures(ctx, invokingMSPID, storageKey)
+	currentSignatures, err := s.GetSignatures(ctx, mspid, storageKey)
 	if err != nil {
 		// it is safe to forward local errors
 		return false, err
@@ -593,12 +607,19 @@ func (s *RoamingSmartContract) signatureExistsForCallerCertificate(ctx contracta
 
 	// check if certificate was used for signing already
 	for _, storedSignature := range currentSignatures {
-		storedCertificate, err := util.ExtractFieldFromJSON(storedSignature, "certificate")
+		storedCertificateString, err := util.ExtractFieldFromJSON(storedSignature, "certificate")
 		if err != nil {
 			// it is safe to forward local errors
 			return false, err
 		}
-		if storedCertificate == certificate {
+
+		storedCertificate, err := certificate.GetLastCertificateFromPEM([]byte(storedCertificateString))
+		if err != nil {
+			// it is safe to forward local errors
+			return false, err
+		}
+
+		if storedCertificate.SerialNumber.Cmp(cert.SerialNumber) == 0 {
 			return true, nil
 		}
 	}
