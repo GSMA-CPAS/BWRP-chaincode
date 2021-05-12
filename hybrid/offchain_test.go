@@ -89,7 +89,7 @@ func TestOffchainDBConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// break config:
-	url := "http://0.1.2.3/nodb"
+	url := "http://localhost:0/nodb"
 	err = ep1.SetOffchainDBConfig(url)
 	// setting this will fail (connection refused)
 	require.Error(t, err)
