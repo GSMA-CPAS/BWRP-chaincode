@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: 2021 the BWRP-chaincode contributors.
+# SPDX-FileCopyrightText: 2021 GSMA and all contributors.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
