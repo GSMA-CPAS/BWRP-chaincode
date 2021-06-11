@@ -151,7 +151,7 @@ func (local Endpoint) InvokeStoreSignature(caller Endpoint, key string, signatur
 	return err
 }
 
-func CreateEndpoints(t *testing.T) (Endpoint, Endpoint) {
+func CreateEndpoints(t *testing.T, orgA Organization, orgB Organization) (Endpoint, Endpoint) {
 	// set loglevel
 	//log.SetLevel(log.InfoLevel)
 	log.SetLevel(log.DebugLevel)
@@ -159,10 +159,10 @@ func CreateEndpoints(t *testing.T) (Endpoint, Endpoint) {
 	// set up stub
 	mockStub := historyshimtest.NewMockStub("roamingState", nil)
 
-	epORG1 := ConfigureEndpoint(t, mockStub, ORG1)
-	epORG2 := ConfigureEndpoint(t, mockStub, ORG2)
+	epORGA := ConfigureEndpoint(t, mockStub, orgA)
+	epORGB := ConfigureEndpoint(t, mockStub, orgB)
 
-	return epORG1, epORG2
+	return epORGA, epORGB
 }
 
 func (ep *Endpoint) Close() {
