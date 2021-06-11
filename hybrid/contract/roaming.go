@@ -414,7 +414,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	// decode signature from base64
 	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
-		return errorcode.CertInvalid.WithMessage("failed to decode signature string").LogReturn()
+		return errorcode.SignatureInvalid.WithMessage("failed to decode signature string").LogReturn()
 	}
 
 	x509signatureAlgorithm, err := certificate.GetSignatureAlgorithmFromString(signatureAlgorithm)
