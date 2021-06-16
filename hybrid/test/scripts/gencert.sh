@@ -5,12 +5,13 @@
 #
 set -e
 
-if [ $# -lt 1 ]; then
-    echo "> usage: $0 <ORGNAME>"
+if [ $# -lt 2 ]; then
+    echo "> usage: $0 <ORGNAME> <CANSIGN 0,1>"
     exit 0
 fi
 
 ORG=$1
+CANSIGN=$2
 
 DIR=$(mktemp -d)
 cd $DIR
@@ -22,9 +23,14 @@ basicConstraints = critical,CA:true
 keyUsage         = critical,keyCertSign 
 EOF
 
-#attr_hex=$(echo -n '{"attrs":{"CanSignDocument":"yes"}}' | xxd -ps -c 200 | tr -d '\n')
-#echo -ne "[default]\n1.2.3.4.5.6.7.8.1=DER:$attr_hex\n" > user.ext
-echo -ne "[default]\n" > user.ext
+if [ "$CANSIGN" -eq "1" ]; then
+    echo "adding CanSignDocument"
+    attr_hex=$(echo -n '{"attrs":{"CanSignDocument":"yes"}}' | xxd -ps -c 200 | tr -d '\n')
+    echo -ne "[default]\n1.2.3.4.5.6.7.8.1=DER:$attr_hex\n" > user.ext
+else
+    echo "NOT adding CanSignDocument"
+    echo -ne "[default]\n" > user.ext
+fi
 
 # create ca 
 openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -nodes -out root.csr -keyout root.key  -subj "/CN=ROOT@$ORG/C=DE/ST=NRW/L=Bielefeld/O=$ORG/OU=${ORG}OU" 
