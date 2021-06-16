@@ -31,29 +31,29 @@ func verifyData(t *testing.T, dataJSON string, document *Document) {
 	require.EqualValues(t, data.PayloadHash, document.PayloadHash)
 }
 
-func setupTestCase(t *testing.T) (func(t *testing.T), endpoint.Endpoint, endpoint.Endpoint) {
+func setupTestCase(t *testing.T, orgA Organization, orgB Organization) (func(t *testing.T), endpoint.Endpoint, endpoint.Endpoint) {
 	testName := util.FunctionName(2)
 	log.Infof("################################################################################")
 	log.Infof("running test " + testName)
 	log.Infof("################################################################################")
 
 	// set up proper endpoints
-	ep1, ep2 := endpoint.CreateEndpoints(t)
+	epA, epB := endpoint.CreateEndpoints(t, orgA, orgB)
 
 	cleanupFunc := func(t *testing.T) {
 		log.Infof("finishing test " + testName + ", cleaning up endpoints...")
 
 		// shut down dummy db
-		ep1.Close()
-		ep2.Close()
+		epA.Close()
+		epB.Close()
 	}
 
-	return cleanupFunc, ep1, ep2
+	return cleanupFunc, epA, epB
 }
 
 func TestPrivateDocumentAccess(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	cleanupFunc, ep1, ep2 := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// read private documents on ORG1 with ORG1 tx context
@@ -69,7 +69,7 @@ func TestPrivateDocumentAccess(t *testing.T) {
 
 func TestOffchainDBConfig(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	cleanupFunc, ep1, ep2 := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// read back for debugging
@@ -100,7 +100,7 @@ func TestOffchainDBConfig(t *testing.T) {
 
 func TestExchangeAndSigning(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	cleanupFunc, ep1, ep2 := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// calc referenceID
@@ -211,7 +211,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 func TestStoreDocumentPayloadLink(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	cleanupFunc, ep1, ep2 := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// calc referenceID
@@ -262,7 +262,7 @@ func TestStoreDocumentPayloadLink(t *testing.T) {
 // publish a bad payloadlink and make sure we detect it
 func TestStoreBadDocumentPayloadLink(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	cleanupFunc, ep1, ep2 := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// calc referenceID
@@ -291,7 +291,7 @@ func TestStoreBadDocumentPayloadLink(t *testing.T) {
 
 func TestDocumentDelete(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	cleanupFunc, ep1, ep2 := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// calc referenceID
@@ -336,7 +336,7 @@ func TestDocumentDelete(t *testing.T) {
 
 func TestErrorHandling(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, _ := setupTestCase(t)
+	cleanupFunc, ep1, _ := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// calc referenceID
@@ -348,7 +348,7 @@ func TestErrorHandling(t *testing.T) {
 
 func TestSignatureValidation(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	cleanupFunc, ep1, ep2 := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// calc referenceID
@@ -384,7 +384,7 @@ func TestSignatureValidation(t *testing.T) {
 
 func TestFalseSignatureValidation(t *testing.T) {
 	// set up
-	cleanupFunc, ep1, ep2 := setupTestCase(t)
+	cleanupFunc, ep1, ep2 := setupTestCase(t, ORG1, ORG2)
 	defer cleanupFunc(t)
 
 	// calc referenceID
@@ -423,14 +423,41 @@ fTAO/i0POc1ltcZ7QFY1GTYIaUOBGuYFDJambWQWh7jqcvZf42grSXQ0YvdB
 	// Validating signature
 	err = ep1.IsValidSignature(ep2, ORG1.Name, signaturePayload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.Error(t, err)
+}
 
-	// QUERY create storage key
-	storagekeyORG1, err := ep1.CreateStorageKey(ep1, ORG1.Name, referenceID)
+// ORG3 uses a broken/invalid certificate that misses the CanSignDocument attr.
+// This org should NOT be able to sign, we should its signatures as bad!
+func TestSignatureValidationMissingCanSignDocument(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, ep3 := setupTestCase(t, ORG1, ORG3)
+	defer cleanupFunc(t)
+
+	// calc referenceID
+	referenceID, err := ep3.CreateReferenceID(ep3)
+	require.NoError(t, err)
+	log.Infof("got referenceId <%s>\n", referenceID)
+
+	// skip the upload of the documents to both peers
+	// here as they are not needed in this test
+
+	// PUBLISH reference payload link on the ledger
+	referencePayloadLink, err := ep3.CreateReferencePayloadLink(ep3, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep3.InvokePublishReferencePayloadLink(ep3, referenceKey, referenceValue)
 	require.NoError(t, err)
 
-	// INVOKE storeSignature with faulty certificate should fail
-	signatureJSON, err := json.Marshal(signature)
+	// ### org3 signs document:
+	signaturePayload := chaincode.CreateSignaturePayload(ORG3.Name, referenceID, referenceValue)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG3.PrivateKey, ORG3.UserCertificate)
 	require.NoError(t, err)
-	err = ep1.InvokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
+
+	// Validating signature
+	err = ep3.IsValidSignature(ep1, ORG1.Name, signaturePayload, signature.Signature, signature.Algorithm, signature.Certificate)
+	// as this cert misses the flag, we should not be able to verify it:
 	require.Error(t, err)
+	// check that we get the proper error:
+	require.EqualValues(t, err.Error(), `{"code":"ERROR_CERT_INVALID","message":"CanSignDocument not set"}`)
+
 }
