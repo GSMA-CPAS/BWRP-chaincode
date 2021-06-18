@@ -278,8 +278,8 @@ func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, referenceID 
 	return storageKey, nil
 }
 
-func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string, payloadHash string) (bool, error) {
-	log.Debugf("%s(%s, %s, %s)", util.FunctionName(1), creatorMSPID, referenceID, payloadHash)
+func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.TransactionContextInterface, referenceID string, payloadHash string) (bool, error) {
+	log.Debugf("%s(%s, %s)", util.FunctionName(1), referenceID, payloadHash)
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
@@ -287,7 +287,7 @@ func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.Transa
 	}
 
 	// fetch data published on ledger
-	ledgerPayloadLink, err := s.GetReferencePayloadLink(ctx, creatorMSPID, referenceID)
+	ledgerPayloadLink, err := s.GetReferencePayloadLink(ctx, referenceID)
 	if err != nil {
 		return false, err
 	}
@@ -320,45 +320,6 @@ func (s *RoamingSmartContract) CreateReferencePayloadLink(referenceID string, pa
 	log.Debugf("hash in: %s", util.HashConcat(referenceID, payloadHash))
 	log.Debugf("%s(...) referenceValue = %s", util.FunctionName(1), referenceValue)
 	return [2]string{referenceKey, referenceValue}, nil
-}
-
-// getStorageLocationData returns the stored data for a given storage type and key
-func (s *RoamingSmartContract) getStorageLocationData(ctx contractapi.TransactionContextInterface, targetMSPID, storageType, storageKey string) (map[string]string, error) {
-	log.Debugf("%s(%s, %s, %s)", util.FunctionName(1), targetMSPID, storageType, storageKey)
-
-	// query results for composite key without identity
-	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(compositeKeyDefinition, []string{targetMSPID, storageType, storageKey})
-
-	if err != nil {
-		return nil, errorcode.Internal.WithMessage("failed to query results for partial composite key, %v", err).LogReturn()
-	}
-
-	results := make(map[string]string)
-
-	if iterator == nil {
-		log.Infof("no results found")
-		return results, nil
-	}
-
-	for iterator.HasNext() {
-		item, err := iterator.Next()
-
-		if err != nil {
-			return nil, errorcode.Internal.WithMessage("failed to iterate results, %v", err).LogReturn()
-		}
-
-		_, attributes, err := ctx.GetStub().SplitCompositeKey(item.GetKey())
-
-		if err != nil {
-			return nil, errorcode.Internal.WithMessage("failed to split composite result, %v", err).LogReturn()
-		}
-
-		txID := attributes[len(attributes)-1]
-		log.Infof("state[%s] txID %s = %s", item.GetKey(), txID, item.GetValue())
-		results[txID] = string(item.GetValue())
-	}
-
-	return results, nil
 }
 
 // GetSignatures returns all signatures stored in the ledger for this key
@@ -414,7 +375,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	// decode signature from base64
 	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
-		return errorcode.SignatureInvalid.WithMessage("failed to decode signature string").LogReturn()
+		return errorcode.CertInvalid.WithMessage("failed to decode signature string").LogReturn()
 	}
 
 	x509signatureAlgorithm, err := certificate.GetSignatureAlgorithmFromString(signatureAlgorithm)
@@ -479,16 +440,29 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) (string, error) {
 	log.Debugf("%s(%s, %s, ...)", util.FunctionName(1), key, dataType)
 
+	var storageLocation string
+
 	// get caller msp
 	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
-	// fetch storage location where we will store the data
-	storageLocation, err := s.GetStorageLocation(ctx, dataType, key)
-	if err != nil {
-		return "", errorcode.Internal.WithMessage("failed to fetch storageLocation, %v", err).LogReturn()
+	if dataType == "PAYLOADLINK" {
+		value, err := ctx.GetStub().GetState(key)
+		if err != nil {
+			return "", errorcode.Internal.WithMessage("failed to check if payload link is already present %v", err).LogReturn()
+		}
+		if value != nil {
+			return "", errorcode.PayloadLinkExists.WithMessage("data was found at the given key, cannot overwrite present payloadlinks %v", err).LogReturn()
+		}
+		storageLocation = key
+	} else {
+		// fetch storage location where we will store the data
+		storageLocation, err = s.GetStorageLocation(ctx, dataType, key)
+		if err != nil {
+			return "", errorcode.Internal.WithMessage("failed to fetch storageLocation, %v", err).LogReturn()
+		}
 	}
 
 	// store data
@@ -629,8 +603,8 @@ func (s *RoamingSmartContract) signatureExistsForCertificate(ctx contractapi.Tra
 
 // Get the referencePayloadLink
 // ACL restricted to local queries only
-func (s *RoamingSmartContract) GetReferencePayloadLink(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string) (string, error) {
-	log.Debugf("%s(%s, %s)", util.FunctionName(1), creatorMSPID, referenceID)
+func (s *RoamingSmartContract) GetReferencePayloadLink(ctx contractapi.TransactionContextInterface, referenceID string) (string, error) {
+	log.Debugf("%s(%s)", util.FunctionName(1), referenceID)
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
@@ -642,37 +616,27 @@ func (s *RoamingSmartContract) GetReferencePayloadLink(ctx contractapi.Transacti
 	log.Debugf("%s() got reference payload link key %s", util.FunctionName(1), referencePayloadLink)
 
 	// fetch reference payload link value stored by the creator
-	storedData, err := s.getStorageLocationData(ctx, creatorMSPID, "PAYLOADLINK", referencePayloadLink)
+	referencePayloadLinkValue, err := ctx.GetStub().GetState(referencePayloadLink)
 	if err != nil {
 		// it is safe to forward local errors
 		return "", err
 	}
 
 	// check if there is no document
-	if len(storedData) != 1 {
-		return "", errorcode.PayloadLinkMissing.WithMessage("expected 1, got %d payloadlinks (referenceID %s)", len(storedData), referenceID).LogReturn()
-	}
-
-	// extract the stored hash, the check above made sure that there is only one entry
-	referencePayloadLinkValue := ""
-	for _, value := range storedData {
-		referencePayloadLinkValue = value
-	}
-	if referencePayloadLinkValue == "" {
-		return "", errorcode.Internal.WithMessage("failed to get reference payload link value").LogReturn()
+	if referencePayloadLinkValue == nil {
+		return "", errorcode.PayloadLinkMissing.WithMessage("no payloadlink found (referenceID %s)", referenceID).LogReturn()
 	}
 
 	// done, fetched link
-	return referencePayloadLinkValue, nil
+	return string(referencePayloadLinkValue), nil
 }
 
 // VerifySignatures checks all stored signature on the ledger against a document
 // referenceID  = the referenceID tying everything together
-// creatorMSPID = MSP that created the contract initially
 // targetMSPID  = MSP whose signatures to check
 // ACL restricted to local queries only
-func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionContextInterface, referenceID, creatorMSPID, targetMSPID string) (map[string]map[string]string, error) {
-	log.Debugf("%s(%s, %s, %s, ...)", util.FunctionName(1), creatorMSPID, targetMSPID, referenceID)
+func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionContextInterface, referenceID, targetMSPID string) (map[string]map[string]string, error) {
+	log.Debugf("%s(%s, %s, ...)", util.FunctionName(1), targetMSPID, referenceID)
 
 	// ACL restricted to local queries only
 	if !acl.LocalCall(ctx) {
@@ -698,7 +662,7 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 	}
 
 	// fetch reference payload link
-	referencePayloadLink, err := s.GetReferencePayloadLink(ctx, creatorMSPID, referenceID)
+	referencePayloadLink, err := s.GetReferencePayloadLink(ctx, referenceID)
 	if err != nil {
 		// it is safe to forward local errors
 		return nil, err
@@ -830,8 +794,8 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 
 // Fetch a blockchain ref for a given referenceID
 // ACL restricted to local queries only
-func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionContextInterface, creatorMSPID string, referenceID string) (*util.BlockchainRef, error) {
-	log.Debugf("%s(%s, %s)", util.FunctionName(1), creatorMSPID, referenceID)
+func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionContextInterface, referenceID string) (*util.BlockchainRef, error) {
+	log.Debugf("%s(%s)", util.FunctionName(1), referenceID)
 
 	var result = util.BlockchainRef{}
 
@@ -843,52 +807,27 @@ func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionCon
 	log.Debugf("%s() got reference payload link key %s", util.FunctionName(1), referencePayloadLink)
 
 	// fetch reference payload link value stored by the creator
-	storedData, err := s.getStorageLocationData(ctx, creatorMSPID, "PAYLOADLINK", referencePayloadLink)
+	iterator, err := ctx.GetStub().GetHistoryForKey(referencePayloadLink)
 	if err != nil {
-		return nil, err
+		return nil, errorcode.Internal.WithMessage("failed to get tx history for referenceID %s, %v", referenceID, err).LogReturn()
+	}
+	defer iterator.Close()
+
+	// There should be exaclty one entry in the history
+	if !iterator.HasNext() {
+		return nil, errorcode.PayloadLinkMissing.WithMessage("no payloadlink found (referenceID %s)", referenceID).LogReturn()
 	}
 
-	if len(storedData) != 1 {
-		return nil, errorcode.PayloadLinkMissing.WithMessage("expected 1, got %d payloadlinks (referenceID %s)", len(storedData), referenceID).LogReturn()
-	}
-
-	// txID can be extracted from the storagelocation result
-	for txID := range storedData {
-		// as we previously checked that this has exactly one element, this is safe to do:
-		result.TxID = txID
-		break
-	}
-
-	// the tx timestamp can be fetched from the ledger
-	// note: this requires core.ledger.history.enableHistoryDatabase = true !
-	storedKey, err := ctx.GetStub().CreateCompositeKey(compositeKeyDefinition, []string{creatorMSPID, "PAYLOADLINK", referencePayloadLink, result.TxID})
+	tx, err := iterator.Next()
 	if err != nil {
-		return nil, errorcode.Internal.WithMessage("failed to get create composite key, %v", err).LogReturn()
+		return nil, errorcode.Internal.WithMessage("could not retrieve tx from history iterator, %v", err).LogReturn()
 	}
 
-	historyIterator, err := ctx.GetStub().GetHistoryForKey(storedKey)
-	if err != nil {
-		return nil, errorcode.Internal.WithMessage("failed to get tx history for key %s, %v", storedKey, err).LogReturn()
+	if iterator.HasNext() {
+		return nil, errorcode.PayloadLinkMissing.WithMessage("expected 1, got multiple payloadlinks (referenceID %s)", referenceID).LogReturn()
 	}
-	defer historyIterator.Close()
-
-	// results should be exactly one entry!
-	if !historyIterator.HasNext() {
-		// no entry?!
-		return nil, errorcode.Internal.WithMessage("no tx history for txID %s. Please set core.ledger.history.enableHistoryDatabase=true!", result.TxID).LogReturn()
-	}
-
-	// fetch transaction from history
-	tx, err := historyIterator.Next()
-	if err != nil {
-		return nil, errorcode.Internal.WithMessage("failed to get tx history, %v", err).LogReturn()
-	}
+	result.TxID = tx.TxId
 	result.Timestamp = time.Unix(tx.GetTimestamp().Seconds, int64(tx.GetTimestamp().Nanos)).Format(time.RFC3339)
-
-	// are there more entries?
-	if historyIterator.HasNext() {
-		return nil, errorcode.Internal.WithMessage("to many history entries for txID %s. this is really bad!", result.TxID).LogReturn()
-	}
 
 	// all fine
 	return &result, nil
@@ -926,7 +865,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	}
 
 	// check if this document matches to what was published on the ledger
-	referencePayloadLinkValid, err := s.verifyReferencePayloadLink(ctx, data.FromMSP, referenceID, expectedPayloadHash)
+	referencePayloadLinkValid, err := s.verifyReferencePayloadLink(ctx, referenceID, expectedPayloadHash)
 	if err != nil {
 		// it is safe to forward local errors
 		return "", err
@@ -938,7 +877,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 
 	// nice, this document contains the main fields
 	// let's add the blockchain reference stuff
-	blockchainRef, err := s.fetchBlockchainRef(ctx, data.FromMSP, referenceID)
+	blockchainRef, err := s.fetchBlockchainRef(ctx, referenceID)
 	if err != nil {
 		return "", err
 	}
