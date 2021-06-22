@@ -375,7 +375,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	// decode signature from base64
 	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
-		return errorcode.CertInvalid.WithMessage("failed to decode signature string").LogReturn()
+		return errorcode.SignatureInvalid.WithMessage("failed to decode signature string").LogReturn()
 	}
 
 	x509signatureAlgorithm, err := certificate.GetSignatureAlgorithmFromString(signatureAlgorithm)
@@ -440,29 +440,10 @@ func (s *RoamingSmartContract) GetStorageLocation(ctx contractapi.TransactionCon
 func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInterface, key string, dataType string, data []byte) (string, error) {
 	log.Debugf("%s(%s, %s, ...)", util.FunctionName(1), key, dataType)
 
-	var storageLocation string
-
-	// get caller msp
-	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	// fetch storage location where we will store the data
+	storageLocation, err := s.GetStorageLocation(ctx, dataType, key)
 	if err != nil {
-		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
-	}
-
-	if dataType == "PAYLOADLINK" {
-		value, err := ctx.GetStub().GetState(key)
-		if err != nil {
-			return "", errorcode.Internal.WithMessage("failed to check if payload link is already present %v", err).LogReturn()
-		}
-		if value != nil {
-			return "", errorcode.PayloadLinkExists.WithMessage("data was found at the given key, cannot overwrite present payloadlinks %v", err).LogReturn()
-		}
-		storageLocation = key
-	} else {
-		// fetch storage location where we will store the data
-		storageLocation, err = s.GetStorageLocation(ctx, dataType, key)
-		if err != nil {
-			return "", errorcode.Internal.WithMessage("failed to fetch storageLocation, %v", err).LogReturn()
-		}
+		return "", errorcode.Internal.WithMessage("failed to fetch storageLocation, %v", err).LogReturn()
 	}
 
 	// store data
@@ -470,6 +451,25 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 	err = ctx.GetStub().PutState(storageLocation, data)
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to store data, %v", err).LogReturn()
+	}
+
+	// emit event
+	timestampString, err := s.emitStorageEvent(ctx, dataType, key)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+
+	// no error
+	return timestampString, nil
+}
+
+// emitStorageEvent emits an event to inform subscribers that new data was stored
+func (s *RoamingSmartContract) emitStorageEvent(ctx contractapi.TransactionContextInterface, dataType string, key string) (string, error) {
+	// get caller msp
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
 	// fetch tx creation time
@@ -495,14 +495,39 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 		return "", errorcode.Internal.WithMessage("failed to send event, %v", err).LogReturn()
 	}
 
-	// no error
 	return timestampString, nil
 }
 
 // PublishReferencePayloadLink stores a given document hash on the ledger
 func (s *RoamingSmartContract) PublishReferencePayloadLink(ctx contractapi.TransactionContextInterface, key string, value string) (string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
-	return s.storeData(ctx, key, "PAYLOADLINK", []byte(value))
+
+	var err error
+
+	// Check if a Payload Link was already stored at the given key
+	storedValue, err := ctx.GetStub().GetState(key)
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to check if payload link is already present %v", err).LogReturn()
+	}
+	if storedValue != nil {
+		return "", errorcode.PayloadLinkExists.WithMessage("data was found at the given key, cannot overwrite present payloadlinks %v", err).LogReturn()
+	}
+
+	// store payload link
+	log.Infof("will store payload link on ledger, key: %s , value: %s ", key, value)
+	err = ctx.GetStub().PutState(key, []byte(value))
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to store payload link, %v", err).LogReturn()
+	}
+
+	// emit event
+	timestampString, err := s.emitStorageEvent(ctx, "PAYLOADLINK", key)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+
+	return timestampString, nil
 }
 
 // StoreSignature stores a given signature on the ledger
