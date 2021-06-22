@@ -362,11 +362,11 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 }
 
 // IsValidSignature verifies if a signature is valid based on the the signaturePayload, the certChain, and the signature
-func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, creatorMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM string) error {
+func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM string) error {
 	log.Debugf("%s(%s, ..., %s)", util.FunctionName(1), signature, signaturePayload)
 
 	// extract and verify user cert based on PEM
-	userCert, err := s.getUserCertFromCertificateChain(ctx, creatorMSPID, certChainPEM)
+	userCert, err := s.getUserCertFromCertificateChain(ctx, signerMSPID, certChainPEM)
 	if err != nil {
 		// it is safe to forward local errors
 		return err
