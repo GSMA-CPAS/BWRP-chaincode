@@ -13,7 +13,9 @@ package main
 
 import (
 	"hybrid/contract"
+	"os"
 
+	"github.com/hyperledger/fabric-chaincode-go/shim"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
 )
@@ -25,18 +27,53 @@ func main() {
 		// set loglevel
 		log.SetLevel(log.DebugLevel)
 	}
+	roamingChaincode := contract.InitRoamingSmartContract()
 
 	// instantiate chaincode
-	roamingChaincode := contract.InitRoamingSmartContract()
 	chaincode, err := contractapi.NewChaincode(roamingChaincode)
 	if err != nil {
 		log.Panicf("failed to create chaincode: %v", err)
 		return
 	}
 
-	// run chaincode
-	err = chaincode.Start()
-	if err != nil {
-		log.Panicf("failed to start chaincode: %v", err)
+	// try to detect if we should start in external chaincode mode
+	ccid, ccidPresent := os.LookupEnv("CHAINCODE_CCID")
+	address, addressPresent := os.LookupEnv("CHAINCODE_ADDRESS")
+
+	if ccidPresent || addressPresent {
+		// chaincode will run as external service
+
+		// make sure both variables are set up properly
+		if !addressPresent || !ccidPresent {
+			log.Panicf("please make sure to export CHAINCODE_CCID and CHAINCODE_ADDRESS for external chaincode mode")
+			return
+		}
+
+		// create local server
+		server := &shim.ChaincodeServer{
+			CCID:    ccid,
+			Address: address,
+			CC:      chaincode,
+			TLSProps: shim.TLSProperties{
+				Disabled: true,
+			},
+		}
+
+		// run server
+		err := server.Start()
+
+		if err != nil {
+			log.Panicf("failed to start external chaincode: %v", err)
+		}
+
+	} else {
+		// use the default way (dind)
+
+		// run chaincode
+		err = chaincode.Start()
+
+		if err != nil {
+			log.Panicf("failed to start chaincode: %v", err)
+		}
 	}
 }
