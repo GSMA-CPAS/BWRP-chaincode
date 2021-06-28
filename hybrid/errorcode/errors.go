@@ -17,6 +17,8 @@ var (
 	OffchainDBConfig = ErrorCode{"ERROR_OFFCHAIN_DB_CONFIG", ""}
 	// Internal : something inside hyperledger is broken
 	Internal = ErrorCode{"ERROR_INTERNAL", ""}
+	// PayloadLinkExists : this PayloadLink already exists
+	PayloadLinkExists = ErrorCode{"ERROR_PAYLOADLINK_EXISTS", ""}
 	// Payloadlink : no payload link found
 	PayloadLinkMissing = ErrorCode{"ERROR_PAYLOADLINK_MISSING", ""}
 	// Payloadlink : mismatch

@@ -118,7 +118,7 @@ func (local Endpoint) IsValidSignature(caller Endpoint, creatorMSP string, docum
 func (local Endpoint) VerifySignatures(caller Endpoint, referenceID string, originMSPID string, targetMSPID string) (map[string]map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.VerifySignatures(caller.txContext, referenceID, originMSPID, targetMSPID)
+	return local.contract.VerifySignatures(caller.txContext, referenceID, targetMSPID)
 }
 
 func (local Endpoint) InvokeSetCertificate(caller Endpoint, certType string, certData string) error {
