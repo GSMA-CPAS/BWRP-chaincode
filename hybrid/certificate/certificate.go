@@ -152,7 +152,7 @@ func CheckUser(userCert *x509.Certificate) error {
 		return errorcode.CertInvalid.WithMessage("user cert is not allowed to be a CA cert").LogReturn()
 	}
 
-	// make sure the user has the custom attribude "CanSign" = true
+	// make sure the user has the custom attribude "CanSignDocument" = true
 	var CanSignDocument = false
 	var oidCustomAttribute = asn1.ObjectIdentifier{1, 2, 3, 4, 5, 6, 7, 8, 1}
 	for _, ext := range userCert.Extensions {
@@ -167,13 +167,13 @@ func CheckUser(userCert *x509.Certificate) error {
 				// try to extract
 				attrValue, exist := result["attrs"].(map[string]interface{})
 				if exist {
-					canSignValue, canSignExist := attrValue["CanSignDocument"].(string)
-					if canSignExist {
-						if canSignValue == "yes" {
+					canSignDocumentValue, canSignDocumentExist := attrValue["CanSignDocument"].(string)
+					if canSignDocumentExist {
+						if canSignDocumentValue == "yes" {
 							CanSignDocument = true
 							break
 						} else {
-							return errorcode.CertInvalid.WithMessage("CanSignDocument attribute value is not yes [%s]", canSignValue).LogReturn()
+							return errorcode.CertInvalid.WithMessage("CanSignDocument attribute value is not yes [%s]", canSignDocumentValue).LogReturn()
 						}
 					}
 				}
