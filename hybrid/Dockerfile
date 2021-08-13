@@ -30,7 +30,7 @@ COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # Add-in our unprivileged user
 COPY --from=base /etc/passwd /etc/group /etc/shadow /etc/
 
-COPY --from=build /go/src/hybrid/hybrid /chaincode
+COPY --from=build /go/src/hybrid/chaincode /chaincode
 
 USER app
 

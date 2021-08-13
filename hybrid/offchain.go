@@ -13,7 +13,9 @@ package main
 
 import (
 	"hybrid/contract"
+	"io/ioutil"
 	"os"
+	"strconv"
 
 	"github.com/hyperledger/fabric-chaincode-go/shim"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
@@ -21,6 +23,14 @@ import (
 )
 
 const enableDebug = true
+
+func loadTLSFile(filePth string) ([]byte, error) {
+    f, err := os.Open(filePth)
+    if err != nil {
+        return nil, err
+    }
+    return ioutil.ReadAll(f)
+}
 
 func main() {
 	if enableDebug {
@@ -39,13 +49,33 @@ func main() {
 	// try to detect if we should start in external chaincode mode
 	ccid, ccidPresent := os.LookupEnv("CHAINCODE_CCID")
 	address, addressPresent := os.LookupEnv("CHAINCODE_ADDRESS")
+	tlsDisable, tlsDisablePresent := os.LookupEnv("CORE_CHAINCODE_TLS_DISABLED")
 
-	if ccidPresent || addressPresent {
+        CORE_PEER_TLS_KEY_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_KEY_FILE"))
+	if err != nil {
+		log.Panicf("Error loadTLSFile : %s")
+	}
+	CORE_PEER_TLS_CERT_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CERT_FILE"))
+	if err != nil {
+		log.Panicf("Error loadTLSFile : %s")
+	}
+	CORE_PEER_TLS_ROOTCERT_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CLIENT_CACERT_FILE"))
+	if err != nil {
+		log.Panicf("Error loadTLSFile : %s")
+        }
+
+	if ccidPresent || addressPresent || tlsDisablePresent {
 		// chaincode will run as external service
 
 		// make sure both variables are set up properly
-		if !addressPresent || !ccidPresent {
-			log.Panicf("please make sure to export CHAINCODE_CCID and CHAINCODE_ADDRESS for external chaincode mode")
+		if !addressPresent || !ccidPresent || !tlsDisablePresent {
+			log.Panicf("please make sure to export CORE_CHAINCODE_TLS_DISABLED, CHAINCODE_CCID and CHAINCODE_ADDRESS for external chaincode mode")
+			return
+		}
+
+		tlsDisableParsed, err := strconv.ParseBool(tlsDisable)
+		if err != nil {
+			log.Panicf("invalid value for tlsDisable")
 			return
 		}
 
@@ -55,12 +85,15 @@ func main() {
 			Address: address,
 			CC:      chaincode,
 			TLSProps: shim.TLSProperties{
-				Disabled: true,
+				Disabled:      tlsDisableParsed,
+				Key:           CORE_PEER_TLS_KEY_FILE,
+				Cert:          CORE_PEER_TLS_CERT_FILE,
+				ClientCACerts: CORE_PEER_TLS_ROOTCERT_FILE,
 			},
 		}
 
 		// run server
-		err := server.Start()
+		err = server.Start()
 
 		if err != nil {
 			log.Panicf("failed to start external chaincode: %v", err)
