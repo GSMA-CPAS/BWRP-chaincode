@@ -4,12 +4,10 @@ package chaincode
 
 import (
 	"bytes"
-	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -136,12 +134,7 @@ func SignPayload(payload string, privateKey string, certChain string) (util.Sign
 	case x509.RSA:
 		signature, err = rsa.SignPKCS1v15(rand.Reader, pkey.(*rsa.PrivateKey), *hashAlgorithm, hash[:])
 	case x509.DSA:
-		var s util.DsaSignature
-		s.S, s.R, err = dsa.Sign(rand.Reader, pkey.(*dsa.PrivateKey), hash[:])
-		if err != nil {
-			return result, nil
-		}
-		signature, err = asn1.Marshal(s)
+		return result, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported. See SA1019: DSA is deprecated and considered as unsafe. Please use a modern alternative.").LogReturn()
 	default:
 		return result, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
 	}
