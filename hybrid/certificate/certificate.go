@@ -4,13 +4,18 @@ package certificate
 
 import (
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/json"
 	"encoding/pem"
 	"hybrid/errorcode"
 	"hybrid/util"
+	"time"
 
+	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
+
+	cert_util "k8s.io/client-go/util/cert"
 )
 
 func ExtractAlgorithmFromUserCert(input []byte) (*x509.SignatureAlgorithm, error) {
@@ -63,8 +68,17 @@ func ChainFromPEM(input []byte) ([]*x509.Certificate, error) {
 	return certificates, nil
 }
 
-func GetVerifiedUserCertificate(rootPEM string, certChainPEM string) (*x509.Certificate, error) {
+func GetVerifiedUserCertificate(ctx contractapi.TransactionContextInterface, msp string, rootPEM string, certChainPEM string, atTime time.Time) (*x509.Certificate, error) {
 	log.Debugf("%s(..., ...)", util.FunctionName(1))
+
+	// check if any certificate was revoked
+	certRevoked, err := AnyCertificateRevokedFromPEM(ctx, msp, atTime, []byte(certChainPEM))
+	if err != nil {
+		return nil, err
+	}
+	if certRevoked {
+		return nil, errorcode.CertInvalid.WithMessage("Certificate in the cert chain has been revoked").LogReturn()
+	}
 
 	// read PEM and create a certificate list
 	intermediateCerts, userCert, err := IntermediateAndUserFromPEM([]byte(certChainPEM))
@@ -195,4 +209,100 @@ func CheckUser(userCert *x509.Certificate) error {
 
 	// all fine
 	return nil
+}
+
+func AnyCertificateRevokedFromPEM(ctx contractapi.TransactionContextInterface, msp string, atTime time.Time, pems ...[]byte) (bool, error) {
+	var certificates []*x509.Certificate
+
+	// get certificates from PEM
+	for _, pem := range pems {
+		certChain, err := ChainFromPEM(pem)
+		if err != nil {
+			return true, err
+		}
+		certificates = append(certificates, certChain...)
+	}
+
+	return AnyCertificateRevoked(ctx, msp, atTime, certificates...)
+}
+
+func AnyCertificateRevoked(ctx contractapi.TransactionContextInterface, msp string, atTime time.Time, certificates ...*x509.Certificate) (bool, error) {
+	log.Debugf("%s(...)", util.FunctionName(1))
+
+	// remove all certificates that have been revoked from array
+	filteredCertificates, err := removeRevokedCertificates(ctx, msp, certificates, atTime)
+	if err != nil {
+		return true, err
+	}
+
+	// check if any certificates have been removed
+	if len(filteredCertificates) != len(certificates) {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func FilterRevokedRootCertificates(ctx contractapi.TransactionContextInterface, msp string, certsPEM []byte, atTime time.Time) ([]byte, error) {
+	log.Debugf("%s(...)", util.FunctionName(1))
+
+	// retrieve certificates from PEM
+	certificates, err := ChainFromPEM(certsPEM)
+	if err != nil {
+		return nil, err
+	}
+
+	// remove all certificates that have been revoked from array
+	certificates, err = removeRevokedCertificates(ctx, msp, certificates, atTime)
+	if err != nil {
+		return nil, err
+	}
+
+	// encode back to PEM
+	filteredPEM, err := cert_util.EncodeCertificates(certificates...)
+	if err != nil {
+		return nil, errorcode.Internal.WithMessage("could not encode certificates to PEM, %s", err).LogReturn()
+	}
+
+	return filteredPEM, nil
+}
+
+func removeRevokedCertificates(ctx contractapi.TransactionContextInterface, msp string, certificates []*x509.Certificate, atTime time.Time) ([]*x509.Certificate, error) {
+	// Check if certificate was revoked for each certificate of array
+	// We iterate from the back so the index doesn't become messed up when removing revoked items from the certificates array
+	for i := len(certificates) - 1; i >= 0; i-- {
+		// distinguised name of issuing CA
+		issuerDN := certificates[i].Issuer.String()
+		// serial number of certificate
+		certSN := certificates[i].SerialNumber.String()
+
+		// build composite key for issuer and certificate
+		compositeKey, err := ctx.GetStub().CreateCompositeKey("msp~configtype~data~dn~serialnumber", []string{msp, "certificates", "revoked", issuerDN, certSN})
+		if err != nil {
+			return nil, errorcode.Internal.WithMessage("failed to create composite key, %v", err).LogReturn()
+		}
+
+		// retrieve potenitally revoked certificate
+		revokedCertBytes, err := ctx.GetStub().GetState(compositeKey)
+		if err != nil {
+			return nil, errorcode.Internal.WithMessage("failed to query revoked cert, %v", err).LogReturn()
+		}
+
+		// Check if a revoked certificate was retrieved
+		if len(revokedCertBytes) > 0 {
+			var revokedCert pkix.RevokedCertificate
+			err = json.Unmarshal(revokedCertBytes, &revokedCert)
+			if err != nil {
+				return nil, errorcode.BadJSON.WithMessage("failed to unmarshal revoked certificate, %v", err).LogReturn()
+			}
+
+			// Check if the revocation happened before the target time
+			if revokedCert.RevocationTime.Before(atTime) {
+				// remove certificate from array
+				certificates = append(certificates[:i], certificates[i+1:]...)
+			}
+		}
+	}
+
+	return certificates, nil
 }

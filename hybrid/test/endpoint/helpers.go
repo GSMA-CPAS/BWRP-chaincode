@@ -227,3 +227,29 @@ func ConfigureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 
 	return ep
 }
+
+func (local Endpoint) IsValidSignatureAtTime(caller Endpoint, msp, signaturePayload, signature, signatureAlgorithm, certListStr, atTime string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.IsValidSignatureAtTime(caller.txContext, msp, signaturePayload, signature, signatureAlgorithm, certListStr, atTime)
+}
+
+func (local Endpoint) SetCertificate(caller Endpoint, certType, certData string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.SetCertificate(caller.txContext, certType, certData)
+	local.stub.MockTransactionEnd(txid)
+	return err
+}
+
+func (local Endpoint) SubmitCRL(caller Endpoint, crlPEM, certChainPEM string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.SubmitCRL(caller.txContext, crlPEM, certChainPEM)
+	local.stub.MockTransactionEnd(txid)
+	return err
+}

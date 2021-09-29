@@ -5,7 +5,11 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"hybrid/errorcode"
 	"hybrid/test/chaincode"
 	. "hybrid/test/data"
@@ -13,6 +17,7 @@ import (
 	"hybrid/util"
 	"os"
 	"testing"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -151,7 +156,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org1 signs document:
 	signaturePayload := chaincode.CreateSignaturePayload(ORG1.Name, referenceID, referenceValue)
-	signature, err := chaincode.SignPayload(signaturePayload, ORG1.PrivateKey, ORG1.UserCertificate)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG1.UserPrivateKey, ORG1.UserCertificate)
 	require.NoError(t, err)
 	signatureJSON, err := json.Marshal(signature)
 	require.NoError(t, err)
@@ -174,7 +179,7 @@ func TestExchangeAndSigning(t *testing.T) {
 	require.NoError(t, err)
 
 	signaturePayload = chaincode.CreateSignaturePayload(ORG2.Name, referenceID, referenceValue)
-	signature, err = chaincode.SignPayload(signaturePayload, ORG2.PrivateKey, ORG2.UserCertificate)
+	signature, err = chaincode.SignPayload(signaturePayload, ORG2.UserPrivateKey, ORG2.UserCertificate)
 	require.NoError(t, err)
 
 	signatureJSON, err = json.Marshal(signature)
@@ -377,7 +382,7 @@ func TestSignatureValidation(t *testing.T) {
 
 	// ### org1 signs document:
 	signaturePayload := chaincode.CreateSignaturePayload(ORG1.Name, referenceID, referenceValue)
-	signature, err := chaincode.SignPayload(signaturePayload, ORG1.PrivateKey, ORG1.UserCertificate)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG1.UserPrivateKey, ORG1.UserCertificate)
 	require.NoError(t, err)
 
 	// Validating signature
@@ -425,7 +430,7 @@ lhx7sgedlY6X78lfsAvwwQe0uXj6JhioQIanYpUxDzpwPj/42Oq0rtgDAjEAu0De
 fTAO/i0POc1ltcZ7QFY1GTYIaUOBGuYFDJambWQWh7jqcvZf42grSXQ0YvdB
 -----END CERTIFICATE-----`
 	signaturePayload := chaincode.CreateSignaturePayload(ORG1.Name, referenceID, referenceValue)
-	signature, err := chaincode.SignPayload(signaturePayload, ORG1.PrivateKey, badCert)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG1.UserPrivateKey, badCert)
 	require.NoError(t, err)
 
 	// Validating signature
@@ -459,7 +464,7 @@ func TestSignatureValidationMissingCanSignDocument(t *testing.T) {
 
 	// ### org3 signs document:
 	signaturePayload := chaincode.CreateSignaturePayload(ORG3.Name, referenceID, referenceValue)
-	signature, err := chaincode.SignPayload(signaturePayload, ORG3.PrivateKey, ORG3.UserCertificate)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG3.UserPrivateKey, ORG3.UserCertificate)
 	require.NoError(t, err)
 
 	// Validating signature
@@ -468,4 +473,126 @@ func TestSignatureValidationMissingCanSignDocument(t *testing.T) {
 	require.Error(t, err)
 	// check that we get the proper error:
 	require.EqualValues(t, err.Error(), `{"code":"ERROR_CERT_INVALID","message":"CanSignDocument not set"}`)
+}
+
+func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, _ := setupTestCase(t, ORG1, ORG2)
+	defer cleanupFunc(t)
+
+	// add root certificate
+	err := ep1.SetCertificate(ep1, "root", ORG1.RootCertificate)
+	require.NoError(t, err)
+
+	// get root cert of ORG1
+	block, _ := pem.Decode([]byte(ORG1.RootCertificate))
+	require.NotNil(t, block)
+	rootCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// get private key of ORG1 root
+	block, _ = pem.Decode([]byte(ORG1.RootPrivateKey))
+	require.NotNil(t, block)
+	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	// get user cert of ORG1
+	block, _ = pem.Decode([]byte(ORG1.UserCertificate))
+	require.NotNil(t, block)
+	userCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// create revokation object for user cert
+	location, err := time.LoadLocation("UTC")
+	require.NoError(t, err)
+	revokedCert := pkix.RevokedCertificate{
+		SerialNumber:   userCert.SerialNumber,
+		RevocationTime: time.Date(2021, 1, 6, 10, 0, 0, 0, location),
+	}
+	revokedCerts := []pkix.RevokedCertificate{revokedCert}
+
+	// create CRL including user cert
+	expiryDate := time.Date(2023, 1, 6, 10, 0, 0, 0, location)
+	crlBytes, err := rootCert.CreateCRL(rand.Reader, rootPrivateKey, revokedCerts, time.Now(), expiryDate)
+	require.NoError(t, err)
+
+	// submit CRL
+	err = ep1.SubmitCRL(ep1, string(crlBytes), "")
+	require.NoError(t, err)
+
+	// org1 signs document:
+	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG1.UserPrivateKey, ORG1.UserCertificate)
+	require.NoError(t, err)
+
+	// validate signature after revokation
+	testDate := time.Date(2021, 1, 7, 10, 0, 0, 0, location)
+	testDateEncoded, err := testDate.MarshalText()
+	require.NoError(t, err)
+	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, string(testDateEncoded))
+	require.Error(t, err)
+
+	// validate signature validity before revocation
+	testDate = time.Date(2021, 1, 5, 10, 0, 0, 0, location)
+	testDateEncoded, err = testDate.MarshalText()
+	require.NoError(t, err)
+	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, string(testDateEncoded))
+	require.NoError(t, err)
+}
+
+func TestRootCertRevokation(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, _ := setupTestCase(t, ORG1, ORG2)
+	defer cleanupFunc(t)
+
+	// add root certificate
+	err := ep1.SetCertificate(ep1, "root", ORG1.RootCertificate)
+	require.NoError(t, err)
+
+	// get root cert of ORG1
+	block, _ := pem.Decode([]byte(ORG1.RootCertificate))
+	require.NotNil(t, block)
+	rootCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// get private key of ORG1 root
+	block, _ = pem.Decode([]byte(ORG1.RootPrivateKey))
+	require.NotNil(t, block)
+	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	// create revokation object for user cert
+	location, err := time.LoadLocation("UTC")
+	require.NoError(t, err)
+	revokedCert := pkix.RevokedCertificate{
+		SerialNumber:   rootCert.SerialNumber,
+		RevocationTime: time.Date(2021, 1, 6, 10, 0, 0, 0, location),
+	}
+	revokedCerts := []pkix.RevokedCertificate{revokedCert}
+
+	// create CRL including user cert
+	expiryDate := time.Date(2023, 1, 6, 10, 0, 0, 0, location)
+	crlBytes, err := rootCert.CreateCRL(rand.Reader, rootPrivateKey, revokedCerts, time.Now(), expiryDate)
+	require.NoError(t, err)
+
+	// submit CRL
+	err = ep1.SubmitCRL(ep1, string(crlBytes), "")
+	require.NoError(t, err)
+
+	// org1 signs document:
+	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG1.UserPrivateKey, ORG1.UserCertificate)
+	require.NoError(t, err)
+
+	// validate signature after revokation
+	testDate := time.Date(2021, 1, 7, 10, 0, 0, 0, location)
+	testDateEncoded, err := testDate.MarshalText()
+	require.NoError(t, err)
+	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, string(testDateEncoded))
+	require.Error(t, err)
+
+	// validate signature validity before revocation
+	testDate = time.Date(2021, 1, 5, 10, 0, 0, 0, location)
+	testDateEncoded, err = testDate.MarshalText()
+	require.NoError(t, err)
+	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, string(testDateEncoded))
+	require.NoError(t, err)
 }
