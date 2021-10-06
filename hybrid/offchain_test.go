@@ -502,17 +502,22 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	userCert, err := x509.ParseCertificate(block.Bytes)
 	require.NoError(t, err)
 
+	// org1 signs document:
+	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG1.UserPrivateKey, ORG1.UserCertificate)
+	require.NoError(t, err)
+	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
+	require.NoError(t, err)
+
 	// create revokation object for user cert
-	location, err := time.LoadLocation("UTC")
 	require.NoError(t, err)
 	revokedCert := pkix.RevokedCertificate{
 		SerialNumber:   userCert.SerialNumber,
-		RevocationTime: time.Date(2021, 1, 6, 10, 0, 0, 0, location),
+		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday
 	}
 	revokedCerts := []pkix.RevokedCertificate{revokedCert}
 
 	// create CRL including user cert
-	expiryDate := time.Date(2023, 1, 6, 10, 0, 0, 0, location)
+	expiryDate := time.Now().AddDate(3, 0, 0) // 3 years from now
 	crlBytes, err := rootCert.CreateCRL(rand.Reader, rootPrivateKey, revokedCerts, time.Now(), expiryDate)
 	require.NoError(t, err)
 
@@ -520,23 +525,10 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	err = ep1.SubmitCRL(ep1, string(crlBytes), "")
 	require.NoError(t, err)
 
-	// org1 signs document:
-	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG1.UserPrivateKey, ORG1.UserCertificate)
-	require.NoError(t, err)
-
 	// validate signature after revokation
-	testDate := time.Date(2021, 1, 7, 10, 0, 0, 0, location)
-	testDateEncoded, err := testDate.MarshalText()
 	require.NoError(t, err)
-	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, string(testDateEncoded))
+	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.Error(t, err)
-
-	// validate signature validity before revocation
-	testDate = time.Date(2021, 1, 5, 10, 0, 0, 0, location)
-	testDateEncoded, err = testDate.MarshalText()
-	require.NoError(t, err)
-	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, string(testDateEncoded))
-	require.NoError(t, err)
 }
 
 func TestRootCertRevokation(t *testing.T) {
@@ -561,16 +553,15 @@ func TestRootCertRevokation(t *testing.T) {
 	require.NoError(t, err)
 
 	// create revokation object for user cert
-	location, err := time.LoadLocation("UTC")
 	require.NoError(t, err)
 	revokedCert := pkix.RevokedCertificate{
 		SerialNumber:   rootCert.SerialNumber,
-		RevocationTime: time.Date(2021, 1, 6, 10, 0, 0, 0, location),
+		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday,
 	}
 	revokedCerts := []pkix.RevokedCertificate{revokedCert}
 
 	// create CRL including user cert
-	expiryDate := time.Date(2023, 1, 6, 10, 0, 0, 0, location)
+	expiryDate := time.Now().AddDate(3, 0, 0) // 3 years from now
 	crlBytes, err := rootCert.CreateCRL(rand.Reader, rootPrivateKey, revokedCerts, time.Now(), expiryDate)
 	require.NoError(t, err)
 
@@ -583,16 +574,11 @@ func TestRootCertRevokation(t *testing.T) {
 	require.NoError(t, err)
 
 	// validate signature after revokation
-	testDate := time.Date(2021, 1, 7, 10, 0, 0, 0, location)
-	testDateEncoded, err := testDate.MarshalText()
-	require.NoError(t, err)
-	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, string(testDateEncoded))
+	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.Error(t, err)
 
-	// validate signature validity before revocation
-	testDate = time.Date(2021, 1, 5, 10, 0, 0, 0, location)
-	testDateEncoded, err = testDate.MarshalText()
-	require.NoError(t, err)
-	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, string(testDateEncoded))
+	// validate signature before revokation
+	timeBeforeRevocation := time.Now().AddDate(0, 0, -2).Format(time.RFC3339)
+	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, timeBeforeRevocation)
 	require.NoError(t, err)
 }

@@ -127,6 +127,12 @@ func (local Endpoint) IsValidSignature(caller Endpoint, creatorMSP string, docum
 	return local.contract.IsValidSignature(caller.txContext, creatorMSP, document, signature, signatureAlgorithm, certListStr)
 }
 
+func (local Endpoint) IsValidSignatureAtTime(caller Endpoint, creatorMSP string, document string, signature string, signatureAlgorithm string, certListStr string, timeString string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	return local.contract.IsValidSignatureAtTime(caller.txContext, creatorMSP, document, signature, signatureAlgorithm, certListStr, timeString)
+}
+
 func (local Endpoint) VerifySignatures(caller Endpoint, referenceID string, originMSPID string, targetMSPID string) (map[string]map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
@@ -226,12 +232,6 @@ func ConfigureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	require.NoError(t, err)
 
 	return ep
-}
-
-func (local Endpoint) IsValidSignatureAtTime(caller Endpoint, msp, signaturePayload, signature, signatureAlgorithm, certListStr, atTime string) error {
-	log.Debugf("%s()", util.FunctionName(1))
-	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
-	return local.contract.IsValidSignatureAtTime(caller.txContext, msp, signaturePayload, signature, signatureAlgorithm, certListStr, atTime)
 }
 
 func (local Endpoint) SetCertificate(caller Endpoint, certType, certData string) error {

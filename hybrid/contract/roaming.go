@@ -183,11 +183,16 @@ func (s *RoamingSmartContract) SetCertificate(ctx contractapi.TransactionContext
 
 // GetCertificate retrieves the certificate for a given organization from the ledger and checks validity for the current time
 func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContextInterface, msp string, certType string) (string, error) {
-	return s.GetCertificateValidAtTime(ctx, msp, certType, time.Now())
+	timestamp, err := getTxTimestamp(ctx)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+	return s.GetCertificateValidAtTime(ctx, msp, certType, timestamp)
 }
 
 // GetCertificate retrieves the certificate for a given organization from the ledger and checks validity at a given time
-func (s *RoamingSmartContract) GetCertificateValidAtTime(ctx contractapi.TransactionContextInterface, msp string, certType string, atTime time.Time) (string, error) {
+func (s *RoamingSmartContract) GetCertificateValidAtTime(ctx contractapi.TransactionContextInterface, msp string, certType string, timeString string) (string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), msp, certType)
 
 	// cert storage location:
@@ -203,6 +208,11 @@ func (s *RoamingSmartContract) GetCertificateValidAtTime(ctx contractapi.Transac
 	}
 
 	if len(certData) > 0 {
+		atTime, err := time.Parse(time.RFC3339, timeString)
+		if err != nil {
+			return "", errorcode.BadTimeFormat.WithMessage("failed to parse time string, %v", err).LogReturn()
+		}
+
 		// filter revoked certificates from the set of root certs
 		certData, err = certificate.FilterRevokedRootCertificates(ctx, msp, certData, atTime)
 		if err != nil {
@@ -384,28 +394,22 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 	return results, nil
 }
 
-// IsValidSignature checks if a signature is valid and returns an error otherwise
-// Uses current time, it checks if any certificate in the chain has been revoked
-// Checks the validity of the cert chain
+// IsValidSignature verifies if a signature is valid based on the the signaturePayload, the certChain, and the signature at the tx time
 func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM string) error {
-	nowBytes, err := time.Now().MarshalText()
+	timestamp, err := getTxTimestamp(ctx)
 	if err != nil {
-		return errorcode.Internal.WithMessage("failed marshalling current time, %s", err).LogReturn()
+		// it is safe to forward local errors
+		return err
 	}
-	return s.IsValidSignatureAtTime(ctx, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM, string(nowBytes))
+	return s.IsValidSignatureAtTime(ctx, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM, timestamp)
 }
 
-// IsValidSignature verifies if a signature is valid based on the the signaturePayload, the certChain, and the signature
-func (s *RoamingSmartContract) IsValidSignatureAtTime(ctx contractapi.TransactionContextInterface, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM, atTimeString string) error {
+// IsValidSignature verifies if a signature is valid based on the the signaturePayload, the certChain, and the signature at a given time
+func (s *RoamingSmartContract) IsValidSignatureAtTime(ctx contractapi.TransactionContextInterface, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM string, timeString string) error {
 	log.Debugf("%s(%s, ..., %s)", util.FunctionName(1), signature, signaturePayload)
 
-	atTime, err := time.Parse(time.RFC3339, atTimeString)
-	if err != nil {
-		return errorcode.BadTimeFormat.WithMessage("failed unmarshalling time, %s", err).LogReturn()
-	}
-
 	// extract and verify user cert based on PEM
-	userCert, err := s.getUserCertFromCertificateChain(ctx, signerMSPID, certChainPEM, atTime)
+	userCert, err := s.getUserCertFromCertificateChain(ctx, signerMSPID, certChainPEM, timeString)
 	if err != nil {
 		// it is safe to forward local errors
 		return err
@@ -438,12 +442,17 @@ func (s *RoamingSmartContract) IsValidSignatureAtTime(ctx contractapi.Transactio
 }
 
 // getUserCertFromCertificateChain verifies if the cert chain is valid, derived from a stored root cert and returnes the user cert
-func (s *RoamingSmartContract) getUserCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string, atTime time.Time) (*x509.Certificate, error) {
+func (s *RoamingSmartContract) getUserCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string, timeString string) (*x509.Certificate, error) {
 	// get the root certificates for creatorMSP
-	rootPEM, err := s.GetCertificateValidAtTime(ctx, creatorMSPID, "root", atTime)
+	rootPEM, err := s.GetCertificateValidAtTime(ctx, creatorMSPID, "root", timeString)
 	if err != nil {
 		// it is safe to forward local errors
 		return nil, err
+	}
+
+	atTime, err := time.Parse(time.RFC3339, timeString)
+	if err != nil {
+		return nil, errorcode.BadTimeFormat.WithMessage("failed to parse time string, %v", err).LogReturn()
 	}
 
 	// extract and verify user cert based on PEM
@@ -608,8 +617,16 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
+	// fetch and store tx timestamp
+	timestamp, err := getTxTimestamp(ctx)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+	signatureObject.Timestamp = timestamp
+
 	// extract and verify user cert based on PEM
-	userCert, err := s.getUserCertFromCertificateChain(ctx, invokingMSPID, signatureObject.Certificate, time.Now())
+	userCert, err := s.getUserCertFromCertificateChain(ctx, invokingMSPID, signatureObject.Certificate, timestamp)
 	if err != nil {
 		// it is safe to forward local errors
 		return "", err
@@ -625,14 +642,6 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	if certificateExists {
 		return "", errorcode.CertAlreadyExists.WithMessage("certificate was used for signing already").LogReturn()
 	}
-
-	// fetch and store tx timestamp
-	timestamp, err := ctx.GetStub().GetTxTimestamp()
-	if err != nil {
-		return "", errorcode.Internal.WithMessage("failed to fetch transaction timestamp").LogReturn()
-	}
-
-	signatureObject.Timestamp = ptypes.TimestampString(timestamp)
 
 	// convert to JSON
 	json, err := util.MarshalLowerCamelcaseJSON(signatureObject)
@@ -773,8 +782,7 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 
 		// verify signature
 		log.Debugf("tx #%s: testing signature %s...", txID, signatureObject.Signature)
-
-		validationError := s.IsValidSignature(ctx, targetMSPID, signaturePayload, signatureObject.Signature, signatureObject.Algorithm, signatureObject.Certificate)
+		validationError := s.IsValidSignatureAtTime(ctx, targetMSPID, signaturePayload, signatureObject.Signature, signatureObject.Algorithm, signatureObject.Certificate, signatureObject.Timestamp)
 		if validationError != nil {
 			// this signature is INVALID
 			results[txID]["valid"] = "false"
@@ -1056,8 +1064,15 @@ func (s *RoamingSmartContract) SubmitCRL(ctx contractapi.TransactionContextInter
 
 	// Check if list is submitted and signed by intermediate CA
 	if len(certChainPEM) > 0 {
+		// get tx timestamp for revocation check
+		timestamp, err := getTxTimestamp(ctx)
+		if err != nil {
+			// it is safe to forward local errors
+			return err
+		}
+
 		// extract and verify user cert based on PEM
-		signingCert, err := s.getUserCertFromCertificateChain(ctx, invokingMSPID, certChainPEM, time.Now())
+		signingCert, err := s.getUserCertFromCertificateChain(ctx, invokingMSPID, certChainPEM, timestamp)
 		if err != nil {
 			// it is safe to forward local errors
 			return err
@@ -1125,4 +1140,19 @@ func storeRevokedCertificates(ctx contractapi.TransactionContextInterface, invok
 	}
 
 	return nil
+}
+
+func getTxTimestamp(ctx contractapi.TransactionContextInterface) (string, error) {
+	// fetch and store tx timestamp
+	timestampProtobuf, err := ctx.GetStub().GetTxTimestamp()
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to fetch transaction timestamp").LogReturn()
+	}
+
+	timestamp, err := ptypes.Timestamp(timestampProtobuf)
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to cast transaction timestamp").LogReturn()
+	}
+
+	return timestamp.Format(time.RFC3339), nil
 }
