@@ -507,6 +507,29 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	require.NoError(t, err)
 	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.NoError(t, err)
+	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+
+	// calc referenceID
+	referenceID, err := ep1.CreateReferenceID(ep1)
+	require.NoError(t, err)
+	log.Infof("got referenceId <%s>\n", referenceID)
+
+	// PUBLISH reference payload link on the ledger
+	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// QUERY create storage key
+	storagekeyORG1, err := ep1.CreateStorageKey(ep1, ORG1.Name, referenceID)
+	require.NoError(t, err)
+
+	// INVOKE storeSignature (here only org1, can also be all endorsers)
+	err = ep1.InvokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
+	require.NoError(t, err)
 
 	// create revokation object for user cert
 	require.NoError(t, err)
@@ -526,9 +549,17 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	require.NoError(t, err)
 
 	// validate signature after revokation
-	require.NoError(t, err)
 	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.Error(t, err)
+
+	// revoked signature should be returned but revocation must be indicated
+	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG1.Name, ORG1.Name)
+	require.NoError(t, err)
+	require.Equal(t, len(storedSignatures), 1)
+	for _, signatureObject := range storedSignatures {
+		require.Equal(t, signatureObject["valid"], "false")
+		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
+	}
 }
 
 func TestRootCertRevokation(t *testing.T) {
@@ -538,6 +569,33 @@ func TestRootCertRevokation(t *testing.T) {
 
 	// add root certificate
 	err := ep1.SetCertificate(ep1, "root", ORG1.RootCertificate)
+	require.NoError(t, err)
+
+	// org1 signs document:
+	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG1.UserPrivateKey, ORG1.UserCertificate)
+	require.NoError(t, err)
+	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+
+	// calc referenceID
+	referenceID, err := ep1.CreateReferenceID(ep1)
+	require.NoError(t, err)
+	log.Infof("got referenceId <%s>\n", referenceID)
+
+	// PUBLISH reference payload link on the ledger
+	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// QUERY create storage key
+	storagekeyORG1, err := ep1.CreateStorageKey(ep1, ORG1.Name, referenceID)
+	require.NoError(t, err)
+
+	// INVOKE storeSignature (here only org1, can also be all endorsers)
+	err = ep1.InvokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
 	require.NoError(t, err)
 
 	// get root cert of ORG1
@@ -569,10 +627,6 @@ func TestRootCertRevokation(t *testing.T) {
 	err = ep1.SubmitCRL(ep1, string(crlBytes), "")
 	require.NoError(t, err)
 
-	// org1 signs document:
-	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG1.UserPrivateKey, ORG1.UserCertificate)
-	require.NoError(t, err)
-
 	// validate signature after revokation
 	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.Error(t, err)
@@ -581,4 +635,13 @@ func TestRootCertRevokation(t *testing.T) {
 	timeBeforeRevocation := time.Now().AddDate(0, 0, -2).Format(time.RFC3339)
 	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, timeBeforeRevocation)
 	require.NoError(t, err)
+
+	// revoked signature should be returned but revocation must be indicated
+	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG1.Name, ORG1.Name)
+	require.NoError(t, err)
+	require.Equal(t, len(storedSignatures), 1)
+	for _, signatureObject := range storedSignatures {
+		require.Equal(t, signatureObject["valid"], "false")
+		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
+	}
 }
