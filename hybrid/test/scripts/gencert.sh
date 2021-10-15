@@ -20,7 +20,8 @@ echo $DIR
 cat <<EOF > ca.ext
 [ default ]
 basicConstraints = critical,CA:true
-keyUsage         = critical,keyCertSign 
+keyUsage         = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
 EOF
 
 if [ "$CANSIGN" -eq "1" ]; then
@@ -53,10 +54,13 @@ echo ""
 echo -ne '    RootCertificate: `'
 cat root.crt | head -c -1
 echo -e '`,'
+echo -ne '    RootPrivateKey: `'
+cat root.key | head -c -1
+echo -e '`,'
 echo -ne '    UserCertificate: `'
 cat user.crt | head -c -1
 echo -e '`,'
-echo -ne '    PrivateKey: `'
+echo -ne '    UserPrivateKey: `'
 cat user.key | head -c -1
 echo -e '`,'
 echo ""

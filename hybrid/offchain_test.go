@@ -5,6 +5,7 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -15,6 +16,7 @@ import (
 	. "hybrid/test/data"
 	"hybrid/test/endpoint"
 	"hybrid/util"
+	"math/big"
 	"os"
 	"testing"
 	"time"
@@ -495,6 +497,8 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	require.NotNil(t, block)
 	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	require.NoError(t, err)
+	ecdsaRootPrivateKey, ok := rootPrivateKey.(*ecdsa.PrivateKey)
+	require.Equal(t, ok, true)
 
 	// get user cert of ORG1
 	block, _ = pem.Decode([]byte(ORG1.UserCertificate))
@@ -540,8 +544,15 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	revokedCerts := []pkix.RevokedCertificate{revokedCert}
 
 	// create CRL including user cert
-	expiryDate := time.Now().AddDate(3, 0, 0) // 3 years from now
-	crlBytes, err := rootCert.CreateCRL(rand.Reader, rootPrivateKey, revokedCerts, time.Now(), expiryDate)
+	revocationList := &x509.RevocationList{
+		RevokedCertificates: revokedCerts,
+		SignatureAlgorithm:  x509.ECDSAWithSHA256,
+		Number:              big.NewInt(1),
+		ThisUpdate:          time.Time{}.Add(time.Hour * 24),
+		NextUpdate:          time.Time{}.Add(time.Hour * 48),
+	}
+
+	crlBytes, err := x509.CreateRevocationList(rand.Reader, revocationList, rootCert, ecdsaRootPrivateKey)
 	require.NoError(t, err)
 
 	// submit CRL
@@ -609,6 +620,8 @@ func TestRootCertRevokation(t *testing.T) {
 	require.NotNil(t, block)
 	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	require.NoError(t, err)
+	ecdsaRootPrivateKey, ok := rootPrivateKey.(*ecdsa.PrivateKey)
+	require.Equal(t, ok, true)
 
 	// create revokation object for user cert
 	require.NoError(t, err)
@@ -619,8 +632,14 @@ func TestRootCertRevokation(t *testing.T) {
 	revokedCerts := []pkix.RevokedCertificate{revokedCert}
 
 	// create CRL including user cert
-	expiryDate := time.Now().AddDate(3, 0, 0) // 3 years from now
-	crlBytes, err := rootCert.CreateCRL(rand.Reader, rootPrivateKey, revokedCerts, time.Now(), expiryDate)
+	revocationList := &x509.RevocationList{
+		RevokedCertificates: revokedCerts,
+		SignatureAlgorithm:  x509.ECDSAWithSHA256,
+		Number:              big.NewInt(1),
+		ThisUpdate:          time.Time{}.Add(time.Hour * 24),
+		NextUpdate:          time.Time{}.Add(time.Hour * 48),
+	}
+	crlBytes, err := x509.CreateRevocationList(rand.Reader, revocationList, rootCert, ecdsaRootPrivateKey)
 	require.NoError(t, err)
 
 	// submit CRL

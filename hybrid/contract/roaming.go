@@ -245,7 +245,6 @@ func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
 		"GetStorageLocation",
 		"PublishReferencePayloadLink",
 		"StorePrivateDocument",
-		"SubmitCRL",
 		"FetchPrivateDocument",
 		"FetchPrivateDocumentReferenceIDs",
 	}
