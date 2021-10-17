@@ -6,9 +6,9 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"hybrid/acl"
 	"hybrid/certificate"
@@ -1126,7 +1126,8 @@ func storeRevokedCertificates(ctx contractapi.TransactionContextInterface, invok
 			return errorcode.Internal.WithMessage("failed to create composite key, %v", err).LogReturn()
 		}
 
-		revokedCertificateBytes, err := json.Marshal(revokedCertificate)
+		// use asn1, as big int values may not be unmarshalled correctly in json
+		revokedCertificateBytes, err := asn1.Marshal(revokedCertificate)
 		if err != nil {
 			return errorcode.Internal.WithMessage("failed to marshal revocation map, %v", err).LogReturn()
 		}

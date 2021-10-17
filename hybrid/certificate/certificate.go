@@ -291,15 +291,35 @@ func removeRevokedCertificates(ctx contractapi.TransactionContextInterface, msp 
 		// Check if a revoked certificate was retrieved
 		if len(revokedCertBytes) > 0 {
 			var revokedCert pkix.RevokedCertificate
-			err = json.Unmarshal(revokedCertBytes, &revokedCert)
+			_, err = asn1.Unmarshal(revokedCertBytes, &revokedCert)
 			if err != nil {
-				return nil, errorcode.BadJSON.WithMessage("failed to unmarshal revoked certificate, %v", err).LogReturn()
+				return nil, errorcode.Internal.WithMessage("failed to unmarshal revoked certificate, %v", err).LogReturn()
 			}
 
 			// Check if the revocation happened before the target time
 			if revokedCert.RevocationTime.Before(atTime) {
 				// remove certificate from array
 				certificates = append(certificates[:i], certificates[i+1:]...)
+			} else if len(revokedCert.Extensions) > 0 {
+				// An earlier invalidity date may have been specified in extension
+				for _, extension := range revokedCert.Extensions {
+					// Check if extension is Invalidity Date (rfc5280: 5.3.2), OID: id-ce 24
+					if extension.Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 24}) {
+						var timestamp time.Time
+						_, err := asn1.Unmarshal(extension.Value, &timestamp)
+						if err != nil {
+							return nil, errorcode.Internal.WithMessage("could not unmarshal time value: %s", err).LogReturn()
+						}
+						// timestamp, err := time.Parse("20060102150405Z", string(extension.Value))
+						// if err != nil {
+						// 	return nil, errorcode.Internal.WithMessage("could not parse invalidity date of revoked certificate: %s", err).LogReturn()
+						// }
+						if timestamp.Before(atTime) {
+							// remove certificate from array
+							certificates = append(certificates[:i], certificates[i+1:]...)
+						}
+					}
+				}
 			}
 		}
 	}
