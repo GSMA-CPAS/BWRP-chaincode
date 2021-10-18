@@ -310,10 +310,6 @@ func removeRevokedCertificates(ctx contractapi.TransactionContextInterface, msp 
 						if err != nil {
 							return nil, errorcode.Internal.WithMessage("could not unmarshal time value: %s", err).LogReturn()
 						}
-						// timestamp, err := time.Parse("20060102150405Z", string(extension.Value))
-						// if err != nil {
-						// 	return nil, errorcode.Internal.WithMessage("could not parse invalidity date of revoked certificate: %s", err).LogReturn()
-						// }
 						if timestamp.Before(atTime) {
 							// remove certificate from array
 							certificates = append(certificates[:i], certificates[i+1:]...)
