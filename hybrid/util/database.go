@@ -32,9 +32,9 @@ func OffchainDatabasePrepare(uri string) error {
 	}
 
 	log.Info("database does not exist, will initialize it now")
-	_, error := conn.Create(offchainDatabaseName)
+	_, err = conn.Create(offchainDatabaseName)
 
-	return error
+	return err
 }
 
 // OffchainDatabaseCheck verifies that the offchain db exists and is reachable
