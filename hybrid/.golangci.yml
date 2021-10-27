@@ -58,7 +58,7 @@ linters:
     - unparam
     - varcheck
     - whitespace
-#    - wsl
+    - wsl
 
 run:
   issues-exit-code: 1

@@ -27,6 +27,7 @@ func GetSignatureAlgorithmFromString(name string) (x509.SignatureAlgorithm, erro
 			return details.algo, nil
 		}
 	}
+
 	return -1, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
 }
 
@@ -36,6 +37,7 @@ func GetStringFromSignatureAlgorithm(algo x509.SignatureAlgorithm) (string, erro
 			return details.name, nil
 		}
 	}
+
 	return "", errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
 }
 
@@ -45,6 +47,7 @@ func GetHashAlgorithmFromSignatureAlgortithm(algo x509.SignatureAlgorithm) (*cry
 			return &details.hash, nil
 		}
 	}
+
 	return nil, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
 }
 
@@ -54,5 +57,6 @@ func GetPubKeyAlgorithmFromSignatureAlgortithm(algo x509.SignatureAlgorithm) (*x
 			return &details.pubKeyAlgo, nil
 		}
 	}
+
 	return nil, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
 }

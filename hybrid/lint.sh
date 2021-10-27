@@ -5,7 +5,7 @@
 #
 echo "> will run gofmt to fix formatting. will fix the following files:"
 gofmt -l .
-gofmt -w .
+gofmt -s -w .
 echo "> done."
 
 echo "> will run golangci-lint ..."

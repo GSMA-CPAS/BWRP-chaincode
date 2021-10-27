@@ -57,6 +57,7 @@ func (e ErrorCode) WithMessage(format string, vars ...interface{}) ErrorCode {
 func (e ErrorCode) LogReturn() error {
 	err := errors.New(e.Error())
 	log.Error(err)
+
 	return err
 }
 
@@ -81,6 +82,7 @@ func FromJSON(e error) (ErrorCode, error) {
 	if unmarshallingError != nil {
 		return ErrorCode{}, BadJSON.WithMessage("failed to unmarshal error string to ErrorCode object. %v", unmarshallingError).LogReturn()
 	}
+
 	return errorCode, nil
 }
 

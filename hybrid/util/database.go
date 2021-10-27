@@ -32,6 +32,7 @@ func OffchainDatabasePrepare(uri string) error {
 	}
 
 	log.Info("database does not exist, will initialize it now")
+
 	_, err = conn.Create(offchainDatabaseName)
 
 	return err
@@ -88,6 +89,7 @@ func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (s
 
 	// store data
 	log.Info("will store document now")
+
 	err = couchdb.Store(db, &data)
 	if err != nil {
 		log.Error(err)
@@ -96,8 +98,10 @@ func OffchainDatabaseStore(uri string, referenceID string, data OffchainData) (s
 
 	// query document again and calculate hash to make sure the store operation was ok
 	log.Info("done. will query document now")
+
 	queryEntry := OffchainData{}
 	err = couchdb.Load(db, referenceID, &queryEntry)
+
 	if err != nil {
 		log.Error(err)
 		return "", errors.New("failed to query document")

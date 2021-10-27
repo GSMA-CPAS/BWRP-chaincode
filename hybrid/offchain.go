@@ -28,6 +28,7 @@ func main() {
 
 	// instantiate chaincode
 	roamingChaincode := contract.InitRoamingSmartContract()
+
 	chaincode, err := contractapi.NewChaincode(roamingChaincode)
 	if err != nil {
 		log.Panicf("failed to create chaincode: %v", err)

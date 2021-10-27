@@ -77,6 +77,7 @@ func CheckSignatureResponse(input map[string]map[string]string) error {
 func createIdentity(mspID string, cert string) ([]byte, error) {
 	sid := &msp.SerializedIdentity{Mspid: mspID, IdBytes: []byte(cert)}
 	b, err := proto.Marshal(sid)
+
 	return b, err
 }
 
@@ -92,16 +93,20 @@ func SignPayload(payload string, privateKey string, certChain string) (util.Sign
 
 	// decode algorithm used from cert
 	algorithm, err := certificate.ExtractAlgorithmFromUserCert([]byte(certChain))
+
 	if err != nil {
 		return result, err
 	}
+
 	result.Algorithm, err = certificate.GetStringFromSignatureAlgorithm(*algorithm)
+
 	if err != nil {
 		return result, err
 	}
 
 	// create signature
 	pblock, _ := pem.Decode([]byte(privateKey))
+
 	pkey, err := x509.ParsePKCS8PrivateKey(pblock.Bytes)
 	if err != nil {
 		return result, err
@@ -114,10 +119,12 @@ func SignPayload(payload string, privateKey string, certChain string) (util.Sign
 	}
 
 	hashInstance := hashAlgorithm.New()
+
 	_, err = hashInstance.Write([]byte(payload))
 	if err != nil {
 		return result, err
 	}
+
 	hash := hashInstance.Sum(nil)
 
 	pubKeyAlgorithm, err := certificate.GetPubKeyAlgorithmFromSignatureAlgortithm(*algorithm)
@@ -140,6 +147,7 @@ func SignPayload(payload string, privateKey string, certChain string) (util.Sign
 	default:
 		return result, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
 	}
+
 	if err != nil {
 		return result, err
 	}

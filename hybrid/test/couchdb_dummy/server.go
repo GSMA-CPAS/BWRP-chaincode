@@ -46,6 +46,7 @@ func storeData(c echo.Context) error {
 	// calc hash for return value
 	var document map[string]interface{}
 	err := json.Unmarshal(body, &document)
+
 	if err != nil {
 		log.Error("failed to unmarshal JSON " + err.Error())
 		return err
@@ -73,6 +74,7 @@ func fetchDocument(c echo.Context) error {
 	// access dummy db
 	log.Infof("accessing dummyDB[%s][%s]", c.Echo().Server.Addr, id)
 	val, knownHash := dummyDB[c.Echo().Server.Addr][id]
+
 	if !knownHash {
 		log.Infof("could not find id " + id + " in db")
 		return c.String(http.StatusNotFound, `{"error":"not_found","reason":"missing"}`)
@@ -80,6 +82,7 @@ func fetchDocument(c echo.Context) error {
 
 	// return the data
 	log.Infof("ok, returning dummyDB[%s] = %s", id, val)
+
 	return c.String(http.StatusOK, val)
 }
 
@@ -92,6 +95,7 @@ func deleteDocument(c echo.Context) error {
 
 	// access dummy db
 	log.Infof("accessing dummyDB[%s][%s]", c.Echo().Server.Addr, id)
+
 	val, knownHash := dummyDB[c.Echo().Server.Addr][id]
 	if !knownHash {
 		log.Infof("could not find id " + id + " in db")
@@ -164,14 +168,18 @@ func fetchAllDocumentIDs(c echo.Context) error {
 
 	// build dummy response
 	var response = `{"rows":[`
+
 	var rowCount = 0
+
 	for key := range db {
 		if rowCount > 0 {
 			response += `, `
 		}
+
 		response += `{"id": "` + key + `", "key": "` + key + `", "value": {"rev": "1-abcdef123456"}} `
 		rowCount++
 	}
+
 	response += `], "total_rows": ` + strconv.Itoa(rowCount) + `, "offset": 0}`
 
 	//log.Info(response)
@@ -208,6 +216,7 @@ func StartServer(uri string) *echo.Echo {
 
 	// start server
 	log.Info("will listen on " + uri)
+
 	go func() {
 		err := e.Start(uri)
 		if err != nil {
@@ -219,5 +228,6 @@ func StartServer(uri string) *echo.Echo {
 		}
 	}()
 	time.Sleep(ServerStartupDelay)
+
 	return e
 }
