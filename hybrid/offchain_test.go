@@ -256,7 +256,6 @@ func TestStoreDocumentPayloadLink(t *testing.T) {
 	// todo: check those as well!
 	// require.EqualValues(t, data.BlockchainRef.TxID, txID)
 	// require.EqualValues(t, data.BlockchainRef.Timestamp, timestamp)
-
 }
 
 // publish a bad payloadlink and make sure we detect it
@@ -343,7 +342,6 @@ func TestErrorHandling(t *testing.T) {
 	_, err := ep1.CreateStorageKey(ep1, "targetMSP", "invalid_docid")
 	require.Error(t, err)
 	log.Infof("got error string as expected! (%s)\n", err.Error())
-
 }
 
 func TestSignatureValidation(t *testing.T) {
@@ -459,5 +457,4 @@ func TestSignatureValidationMissingCanSignDocument(t *testing.T) {
 	require.Error(t, err)
 	// check that we get the proper error:
 	require.EqualValues(t, err.Error(), `{"code":"ERROR_CERT_INVALID","message":"CanSignDocument not set"}`)
-
 }
