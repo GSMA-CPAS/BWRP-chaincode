@@ -22,6 +22,8 @@ import (
 
 const compositeKeyDefinition string = "owner~type~key~txid"
 
+const expectedIdLength = 64
+
 // RoamingSmartContract creates a new hlf contract api
 type RoamingSmartContract struct {
 	contractapi.Contract
@@ -260,12 +262,14 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 	return referenceID, nil
 }
 
+
+
 // CreateStorageKey returns the hidden key used for hidden communication based on a referenceID and the targetMSP
 func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, referenceID string) (string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), targetMSPID, referenceID)
 
-	if len(referenceID) != 64 {
-		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIdLength {
+		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID),expectedIdLength).LogReturn()
 	}
 
 	if len(targetMSPID) == 0 {
@@ -309,8 +313,8 @@ func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.Transa
 func (s *RoamingSmartContract) CreateReferencePayloadLink(referenceID string, payloadHash string) ([2]string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), referenceID, payloadHash)
 
-	if len(referenceID) != 64 {
-		return [2]string{"", ""}, errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIdLength {
+		return [2]string{"", ""}, errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID), expectedIdLength).LogReturn()
 	}
 
 	referenceKey := util.CalculateHash(referenceID)
@@ -757,8 +761,8 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	log.Debugf("%s()", util.FunctionName(1))
 
 	// verify passed data
-	if len(referenceID) != 64 {
-		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIdLength {
+		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID),expectedIdLength).LogReturn()
 	}
 
 	// get caller msp
