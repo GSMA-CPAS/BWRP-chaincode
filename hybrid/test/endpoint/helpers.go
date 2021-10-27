@@ -203,7 +203,7 @@ func ConfigureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	require.EqualValues(t, uri, url)
 
 	// store root cert:
-	err = ep.InvokeSetCertificate(ep, "root", string(ep.org.RootCertificate))
+	err = ep.InvokeSetCertificate(ep, "root", ep.org.RootCertificate)
 	require.NoError(t, err)
 	return ep
 }
