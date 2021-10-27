@@ -258,7 +258,7 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 		return "", errorcode.ReferenceIDExists.WithMessage("data for this referenceID %s already exists", referenceID).LogReturn()
 	}
 
-	// fine, data does not exist on ledger -> the calulated referenceID is ok
+	// fine, data does not exist on ledger -> the calculated referenceID is ok
 	return referenceID, nil
 }
 
@@ -294,7 +294,7 @@ func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.Transa
 		return false, err
 	}
 
-	// calculate expeced data based on payload hash
+	// calculate expected data based on payload hash
 	expectedPayloadLink := util.CalculateHash(util.HashConcat(referenceID, payloadHash))
 
 	// verify ledger matches the payloadhash
@@ -840,7 +840,7 @@ func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionCon
 	}
 	defer iterator.Close()
 
-	// There should be exaclty one entry in the history
+	// There should be exactly one entry in the history
 	if !iterator.HasNext() {
 		return nil, errorcode.PayloadLinkMissing.WithMessage("no payloadlink found (referenceID %s)", referenceID).LogReturn()
 	}

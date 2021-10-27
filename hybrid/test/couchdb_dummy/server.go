@@ -21,6 +21,7 @@ import (
 var dummyDB = map[string]map[string]string{}
 
 const ServerStartupDelay = 200 * time.Millisecond
+const expectedIDLength = 64
 
 func storeData(c echo.Context) error {
 	body, _ := ioutil.ReadAll(c.Request().Body)
@@ -28,7 +29,7 @@ func storeData(c echo.Context) error {
 
 	// extract hash
 	id := c.Param("id")
-	if len(id) != 64 {
+	if len(id) != expectedIDLength {
 		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+strconv.Itoa(len(id))+`" }`)
 	}
 
@@ -65,7 +66,7 @@ func storeData(c echo.Context) error {
 func fetchDocument(c echo.Context) error {
 	// extract id
 	id := c.Param("id")
-	if len(id) != 64 {
+	if len(id) != expectedIDLength {
 		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+strconv.Itoa(len(id))+`" }`)
 	}
 
@@ -85,7 +86,7 @@ func fetchDocument(c echo.Context) error {
 func deleteDocument(c echo.Context) error {
 	// extract id
 	id := c.Param("id")
-	if len(id) != 64 {
+	if len(id) != expectedIDLength {
 		return c.String(http.StatusInternalServerError, `{ "error": "invalid id parameter. length mismatch `+strconv.Itoa(len(id))+`" }`)
 	}
 

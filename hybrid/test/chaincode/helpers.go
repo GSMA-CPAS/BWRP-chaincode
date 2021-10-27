@@ -135,6 +135,8 @@ func SignPayload(payload string, privateKey string, certChain string) (util.Sign
 		signature, err = rsa.SignPKCS1v15(rand.Reader, pkey.(*rsa.PrivateKey), *hashAlgorithm, hash[:])
 	case x509.DSA:
 		return result, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported. See SA1019: DSA is deprecated and considered as unsafe. Please use a modern alternative.").LogReturn()
+	case x509.Ed25519:
+	case x509.UnknownPublicKeyAlgorithm:
 	default:
 		return result, errorcode.SignatureInvalid.WithMessage("signature algorithm not supported").LogReturn()
 	}
