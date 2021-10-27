@@ -69,7 +69,7 @@ func (s *RoamingSmartContract) CheckOffchainDBConfig(ctx contractapi.Transaction
 		return errorcode.OffchainDBConfig.WithMessage("failed to fetch OffchainDB uri").LogReturn()
 	}
 
-	err = util.OffchainDatabaseCheck(string(uri))
+	err = util.OffchainDatabaseCheck(uri)
 	if err != nil {
 		// DO NOT return the actual error here as this is not ACL restricted and can be called by world!
 		log.Error(err)
