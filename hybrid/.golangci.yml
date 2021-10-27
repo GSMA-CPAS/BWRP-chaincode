@@ -47,7 +47,7 @@ linters:
     - nolintlint
     - nakedret
     - prealloc
-    - predeclared
+#    - predeclared
     - staticcheck
     - structcheck
     - stylecheck
