@@ -20,6 +20,8 @@ import (
 // dummydb[hostname][id] = data
 var dummyDB = map[string]map[string]string{}
 
+const ServerStartupDelay = 200 * time.Millisecond
+
 func storeData(c echo.Context) error {
 	body, _ := ioutil.ReadAll(c.Request().Body)
 	log.Infof("on %s got: %s", c.Echo().Server.Addr, string(body))
@@ -48,7 +50,11 @@ func storeData(c echo.Context) error {
 		return err
 	}
 
-	payload := document["Payload"].(string)
+	payload, conversionOk := document["Payload"].(string)
+	if !conversionOk {
+		return c.String(http.StatusInternalServerError, `{ "error": "invalid payload. failed to convert payload to string" }`)
+	}
+
 	payloadHash := util.CalculateHash(payload)
 	log.Infof("done, hash is " + payloadHash)
 
@@ -211,6 +217,6 @@ func StartServer(uri string) *echo.Echo {
 			}
 		}
 	}()
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(ServerStartupDelay)
 	return e
 }
