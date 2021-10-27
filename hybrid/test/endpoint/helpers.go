@@ -6,7 +6,7 @@ import (
 	"hybrid/contract"
 	"hybrid/test/chaincode"
 	couchdb "hybrid/test/couchdb_dummy"
-	. "hybrid/test/data"
+	. "hybrid/test/data" //nolint:stylecheck // allow dot imports here
 	"hybrid/test/historyshimtest"
 	"hybrid/test/mocks"
 	"hybrid/util"
@@ -165,8 +165,8 @@ func CreateEndpoints(t *testing.T, orgA Organization, orgB Organization) (Endpoi
 	return epORGA, epORGB
 }
 
-func (ep *Endpoint) Close() {
-	ep.couchdb.Close()
+func (local *Endpoint) Close() {
+	local.couchdb.Close()
 }
 
 func ConfigureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Organization) Endpoint {
