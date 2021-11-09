@@ -441,7 +441,7 @@ func (s *RoamingSmartContract) IsValidSignatureAtTime(ctx contractapi.Transactio
 }
 
 // getUserCertFromCertificateChain verifies if the cert chain is valid, derived from a stored root cert and returnes the user cert
-func (s *RoamingSmartContract) getUserCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string, timeString string) (*x509.Certificate, error) {
+func (s *RoamingSmartContract) getCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string, timeString string) (*x509.Certificate, error) {
 	// get the root certificates for creatorMSP
 	rootPEM, err := s.GetCertificateValidAtTime(ctx, creatorMSPID, "root", timeString)
 	if err != nil {
@@ -455,7 +455,25 @@ func (s *RoamingSmartContract) getUserCertFromCertificateChain(ctx contractapi.T
 	}
 
 	// extract and verify user cert based on PEM
-	return certificate.GetVerifiedUserCertificate(ctx, creatorMSPID, rootPEM, certChainPEM, atTime)
+	return certificate.GetVerifiedCertificate(ctx, creatorMSPID, rootPEM, certChainPEM, atTime)
+}
+
+// getUserCertFromCertificateChain verifies if the cert chain is valid, derived from a stored root cert and returnes the user cert
+func (s *RoamingSmartContract) getUserCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string, timeString string) (*x509.Certificate, error) {
+	userCert, err := s.getCertFromCertificateChain(ctx, creatorMSPID, certChainPEM, timeString)
+	if err != nil {
+		// it is safe to forward local errors
+		return nil, err
+	}
+
+	// make sure user Cert is valid and has all flags:
+	err = certificate.CheckUser(userCert)
+	if err != nil {
+		// it is safe to forward local errors
+		return nil, err
+	}
+
+	return userCert, nil
 }
 
 // GetStorageLocation returns the storage location for
@@ -1071,7 +1089,7 @@ func (s *RoamingSmartContract) SubmitCRL(ctx contractapi.TransactionContextInter
 		}
 
 		// extract and verify user cert based on PEM
-		signingCert, err := s.getUserCertFromCertificateChain(ctx, invokingMSPID, certChainPEM, timestamp)
+		signingCert, err := s.getCertFromCertificateChain(ctx, invokingMSPID, certChainPEM, timestamp)
 		if err != nil {
 			// it is safe to forward local errors
 			return err

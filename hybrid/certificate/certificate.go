@@ -66,7 +66,7 @@ func ChainFromPEM(input []byte) ([]*x509.Certificate, error) {
 	return certificates, nil
 }
 
-func GetVerifiedUserCertificate(ctx contractapi.TransactionContextInterface, msp string, rootPEM string, certChainPEM string, atTime time.Time) (*x509.Certificate, error) {
+func GetVerifiedCertificate(ctx contractapi.TransactionContextInterface, msp string, rootPEM string, certChainPEM string, atTime time.Time) (*x509.Certificate, error) {
 	log.Debugf("%s(..., ...)", util.FunctionName(1))
 
 	// check if any certificate was revoked
@@ -79,7 +79,7 @@ func GetVerifiedUserCertificate(ctx contractapi.TransactionContextInterface, msp
 	}
 
 	// read PEM and create a certificate list
-	intermediateCerts, userCert, err := IntermediateAndUserFromPEM([]byte(certChainPEM))
+	intermediateCerts, targetCert, err := IntermediateAndUserFromPEM([]byte(certChainPEM))
 	if err != nil {
 		// it is safe to forward local errors
 		return nil, err
@@ -87,13 +87,6 @@ func GetVerifiedUserCertificate(ctx contractapi.TransactionContextInterface, msp
 
 	// make sure the intermediate certs all habe CA flag set:
 	err = CheckIntermediates(intermediateCerts)
-	if err != nil {
-		// it is safe to forward local errors
-		return nil, err
-	}
-
-	// make sure user Cert is valid and has all flags:
-	err = CheckUser(userCert)
 	if err != nil {
 		// it is safe to forward local errors
 		return nil, err
@@ -120,12 +113,12 @@ func GetVerifiedUserCertificate(ctx contractapi.TransactionContextInterface, msp
 	}
 
 	// make sure we can build a trusted chain from root to user
-	_, err = userCert.Verify(opts)
+	_, err = targetCert.Verify(opts)
 	if err != nil {
 		return nil, errorcode.CertInvalid.WithMessage("failed to verify user certificate, %v", err).LogReturn()
 	}
 
-	return userCert, nil
+	return targetCert, nil
 }
 
 func IntermediateAndUserFromPEM(input []byte) ([]*x509.Certificate, *x509.Certificate, error) {

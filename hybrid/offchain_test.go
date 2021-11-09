@@ -470,7 +470,7 @@ func TestSignatureValidationMissingCanSignDocument(t *testing.T) {
 	require.NoError(t, err)
 
 	// Validating signature
-	err = ep3.IsValidSignature(ep1, ORG1.Name, signaturePayload, signature.Signature, signature.Algorithm, signature.Certificate)
+	err = ep3.IsValidSignature(ep1, ORG3.Name, signaturePayload, signature.Signature, signature.Algorithm, signature.Certificate)
 	// as this cert misses the flag, we should not be able to verify it:
 	require.Error(t, err)
 	// check that we get the proper error:
