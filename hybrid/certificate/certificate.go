@@ -14,8 +14,6 @@ import (
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
-
-	cert_util "k8s.io/client-go/util/cert"
 )
 
 func ExtractAlgorithmFromUserCert(input []byte) (*x509.SignatureAlgorithm, error) {
@@ -259,7 +257,7 @@ func FilterRevokedRootCertificates(ctx contractapi.TransactionContextInterface, 
 	}
 
 	// encode back to PEM
-	filteredPEM, err := cert_util.EncodeCertificates(certificates...)
+	filteredPEM, err := util.EncodeCertificates(certificates...)
 	if err != nil {
 		return nil, errorcode.Internal.WithMessage("could not encode certificates to PEM, %s", err).LogReturn()
 	}
