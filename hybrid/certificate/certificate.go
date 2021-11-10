@@ -112,10 +112,10 @@ func GetVerifiedCertificate(ctx contractapi.TransactionContextInterface, msp str
 		Intermediates: interCertPool,
 	}
 
-	// make sure we can build a trusted chain from root to user
+	// make sure we can build a trusted chain from root to target
 	_, err = targetCert.Verify(opts)
 	if err != nil {
-		return nil, errorcode.CertInvalid.WithMessage("failed to verify user certificate, %v", err).LogReturn()
+		return nil, errorcode.CertInvalid.WithMessage("failed to verify certificate, %v", err).LogReturn()
 	}
 
 	return targetCert, nil

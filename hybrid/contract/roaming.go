@@ -1089,7 +1089,7 @@ func (s *RoamingSmartContract) SubmitCRL(ctx contractapi.TransactionContextInter
 		}
 
 		// extract and verify user cert based on PEM
-		signingCert, err := s.getCertFromCertificateChain(ctx, invokingMSPID, certChainPEM, timestamp)
+		signingCert, err = s.getCertFromCertificateChain(ctx, invokingMSPID, certChainPEM, timestamp)
 		if err != nil {
 			// it is safe to forward local errors
 			return err
