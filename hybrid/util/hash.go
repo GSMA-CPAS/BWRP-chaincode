@@ -11,6 +11,7 @@ import (
 // e.g. HashConcat("a", "b", "c") => "a:b:c"
 func HashConcat(s ...string) string {
 	result := ""
+
 	for index, value := range s {
 		if index == 0 {
 			result = value
@@ -18,6 +19,7 @@ func HashConcat(s ...string) string {
 			result = result + ":" + value
 		}
 	}
+
 	return result
 }
 

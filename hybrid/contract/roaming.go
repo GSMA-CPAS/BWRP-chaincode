@@ -22,6 +22,8 @@ import (
 
 const compositeKeyDefinition string = "owner~type~key~txid"
 
+const expectedIDLength = 64
+
 // RoamingSmartContract creates a new hlf contract api
 type RoamingSmartContract struct {
 	contractapi.Contract
@@ -49,6 +51,7 @@ func (s *RoamingSmartContract) GetOffchainDBConfig(ctx contractapi.TransactionCo
 	if !acl.LocalCall(ctx) {
 		return "", errorcode.NonLocalAccessDenied.LogReturn()
 	}
+
 	config, err := s.getLocalOffchainDBConfig(ctx)
 
 	// it is safe to forward local errors
@@ -67,7 +70,7 @@ func (s *RoamingSmartContract) CheckOffchainDBConfig(ctx contractapi.Transaction
 		return errorcode.OffchainDBConfig.WithMessage("failed to fetch OffchainDB uri").LogReturn()
 	}
 
-	err = util.OffchainDatabaseCheck(string(uri))
+	err = util.OffchainDatabaseCheck(uri)
 	if err != nil {
 		// DO NOT return the actual error here as this is not ACL restricted and can be called by world!
 		log.Error(err)
@@ -93,6 +96,7 @@ func (s *RoamingSmartContract) getLocalOffchainDBConfig(ctx contractapi.Transact
 	if err != nil {
 		return "", fmt.Errorf("failed to get offchaindb, %v", err)
 	}
+
 	if data == nil {
 		return "", fmt.Errorf("no data in offchaindb config")
 	}
@@ -227,6 +231,7 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 	// TODO: verify that the golang crypto lib returns random numbers that are good enough to be used here!
 	rand32 := make([]byte, 32)
 	_, err := rand.Read(rand32)
+
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to generate referenceID, %v", err).LogReturn()
 	}
@@ -256,7 +261,7 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 		return "", errorcode.ReferenceIDExists.WithMessage("data for this referenceID %s already exists", referenceID).LogReturn()
 	}
 
-	// fine, data does not exist on ledger -> the calulated referenceID is ok
+	// fine, data does not exist on ledger -> the calculated referenceID is ok
 	return referenceID, nil
 }
 
@@ -264,8 +269,8 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, referenceID string) (string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), targetMSPID, referenceID)
 
-	if len(referenceID) != 64 {
-		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIDLength {
+		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID), expectedIDLength).LogReturn()
 	}
 
 	if len(targetMSPID) == 0 {
@@ -292,7 +297,7 @@ func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.Transa
 		return false, err
 	}
 
-	// calculate expeced data based on payload hash
+	// calculate expected data based on payload hash
 	expectedPayloadLink := util.CalculateHash(util.HashConcat(referenceID, payloadHash))
 
 	// verify ledger matches the payloadhash
@@ -309,8 +314,8 @@ func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.Transa
 func (s *RoamingSmartContract) CreateReferencePayloadLink(referenceID string, payloadHash string) ([2]string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), referenceID, payloadHash)
 
-	if len(referenceID) != 64 {
-		return [2]string{"", ""}, errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIDLength {
+		return [2]string{"", ""}, errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID), expectedIDLength).LogReturn()
 	}
 
 	referenceKey := util.CalculateHash(referenceID)
@@ -319,6 +324,7 @@ func (s *RoamingSmartContract) CreateReferencePayloadLink(referenceID string, pa
 	log.Debugf("%s(...) referenceKey   = %s", util.FunctionName(1), referenceKey)
 	log.Debugf("hash in: %s", util.HashConcat(referenceID, payloadHash))
 	log.Debugf("%s(...) referenceValue = %s", util.FunctionName(1), referenceValue)
+
 	return [2]string{referenceKey, referenceValue}, nil
 }
 
@@ -391,6 +397,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	if err = userCert.CheckSignature(x509signatureAlgorithm, []byte(signaturePayload), signatureBytes); err != nil {
 		return errorcode.SignatureInvalid.WithMessage("signature validation failed, %v", err).LogReturn()
 	}
+
 	log.Infof("IsValidSignature: Valid")
 
 	// document is valid
@@ -448,6 +455,7 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 
 	// store data
 	log.Infof("will store data of type %s on ledger: state[%s] = 0x%s", dataType, storageLocation, hex.EncodeToString(data))
+
 	err = ctx.GetStub().PutState(storageLocation, data)
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to store data, %v", err).LogReturn()
@@ -490,6 +498,7 @@ func (s *RoamingSmartContract) emitStorageEvent(ctx contractapi.TransactionConte
 		` }`
 
 	log.Infof("sending event %s: %s", eventName, payload)
+
 	err = ctx.GetStub().SetEvent(eventName, []byte(payload))
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to send event, %v", err).LogReturn()
@@ -509,12 +518,14 @@ func (s *RoamingSmartContract) PublishReferencePayloadLink(ctx contractapi.Trans
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to check if payload link is already present %v", err).LogReturn()
 	}
+
 	if storedValue != nil {
 		return "", errorcode.PayloadLinkExists.WithMessage("data was found at the given key, cannot overwrite present payloadlinks %v", err).LogReturn()
 	}
 
 	// store payload link
 	log.Infof("will store payload link on ledger, key: %s , value: %s ", key, value)
+
 	err = ctx.GetStub().PutState(key, []byte(value))
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to store payload link, %v", err).LogReturn()
@@ -535,6 +546,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	log.Debugf("%s(%s, ...)", util.FunctionName(1), storageKey)
 
 	var signatureObject util.Signature
+
 	var err error
 
 	// try to extract all values from the given JSON
@@ -576,6 +588,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		// it is safe to forward local errors
 		return "", err
 	}
+
 	if certificateExists {
 		return "", errorcode.CertAlreadyExists.WithMessage("certificate was used for signing already").LogReturn()
 	}
@@ -585,6 +598,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to fetch transaction timestamp").LogReturn()
 	}
+
 	signatureObject.Timestamp = ptypes.TimestampString(timestamp)
 
 	// convert to JSON
@@ -676,10 +690,12 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 		//it is safe to forward local errors
 		return nil, err
 	}
+
 	log.Debugf("%s() got signature storage key %s", util.FunctionName(1), storageKeySignature)
 
 	// fetch all signatures
 	log.Debugf("fetching all signatures for storageKey %s", storageKeySignature)
+
 	signatures, err := s.GetSignatures(ctx, targetMSPID, storageKeySignature)
 	if err != nil {
 		// it is safe to forward local errors
@@ -695,6 +711,7 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 
 	// verify the given signatures:
 	var results = make(map[string]map[string]string)
+
 	for txID, signatureString := range signatures {
 		// decode json string to object
 		err := util.UnmarshalLowerCamelcaseJSON([]byte(signatureString), &signatureObject)
@@ -723,6 +740,7 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 
 		// verify signature
 		log.Debugf("tx #%s: testing signature %s...", txID, signatureObject.Signature)
+
 		validationError := s.IsValidSignature(ctx, targetMSPID, signaturePayload, signatureObject.Signature, signatureObject.Algorithm, signatureObject.Certificate)
 		if validationError != nil {
 			// this signature is INVALID
@@ -757,8 +775,8 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	log.Debugf("%s()", util.FunctionName(1))
 
 	// verify passed data
-	if len(referenceID) != 64 {
-		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIDLength {
+		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID), expectedIDLength).LogReturn()
 	}
 
 	// get caller msp
@@ -838,7 +856,7 @@ func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionCon
 	}
 	defer iterator.Close()
 
-	// There should be exaclty one entry in the history
+	// There should be exactly one entry in the history
 	if !iterator.HasNext() {
 		return nil, errorcode.PayloadLinkMissing.WithMessage("no payloadlink found (referenceID %s)", referenceID).LogReturn()
 	}
@@ -851,6 +869,7 @@ func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionCon
 	if iterator.HasNext() {
 		return nil, errorcode.PayloadLinkMissing.WithMessage("expected 1, got multiple payloadlinks (referenceID %s)", referenceID).LogReturn()
 	}
+
 	result.TxID = tx.TxId
 	result.Timestamp = time.Unix(tx.GetTimestamp().Seconds, int64(tx.GetTimestamp().Nanos)).Format(time.RFC3339)
 
@@ -885,6 +904,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	// re-verify data hash:
 	expectedPayloadHash := util.CalculateHash(data.Payload)
 	payloadHash := data.PayloadHash
+
 	if payloadHash != expectedPayloadHash {
 		return "", errorcode.Internal.WithMessage("hash mismatch %s != %s", payloadHash, expectedPayloadHash).LogReturn()
 	}
@@ -906,6 +926,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	if err != nil {
 		return "", err
 	}
+
 	data.BlockchainRef = *blockchainRef
 
 	// convert to clean json without couchdb "leftovers"

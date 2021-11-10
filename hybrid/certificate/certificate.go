@@ -15,6 +15,7 @@ import (
 
 func ExtractAlgorithmFromUserCert(input []byte) (*x509.SignatureAlgorithm, error) {
 	log.Debugf("%s(...)", util.FunctionName(1))
+
 	certificate, err := GetLastCertificateFromPEM(input)
 	if err != nil {
 		return nil, err
@@ -37,6 +38,7 @@ func ChainFromPEM(input []byte) ([]*x509.Certificate, error) {
 	log.Debugf("%s(...)", util.FunctionName(1))
 
 	var certificates []*x509.Certificate
+
 	for {
 		block, rest := pem.Decode(input)
 		if block == nil {
@@ -57,6 +59,7 @@ func ChainFromPEM(input []byte) ([]*x509.Certificate, error) {
 		input = rest
 	}
 	log.Debugf("parsed %d intermediate and user certs", len(certificates))
+
 	return certificates, nil
 }
 
@@ -93,6 +96,7 @@ func GetVerifiedUserCertificate(rootPEM string, certChainPEM string) (*x509.Cert
 
 	// add intermediate certs to pool
 	interCertPool := x509.NewCertPool()
+
 	for _, cert := range intermediateCerts {
 		interCertPool.AddCert(cert)
 	}
@@ -154,11 +158,14 @@ func CheckUser(userCert *x509.Certificate) error {
 
 	// make sure the user has the custom attribude "CanSignDocument" = true
 	var CanSignDocument = false
+
 	var oidCustomAttribute = asn1.ObjectIdentifier{1, 2, 3, 4, 5, 6, 7, 8, 1}
+
 	for _, ext := range userCert.Extensions {
 		if ext.Id.Equal(oidCustomAttribute) {
 			var result map[string]interface{}
 			err := json.Unmarshal(ext.Value, &result)
+
 			if err != nil {
 				// do not abort here, this might just be some
 				// different, non-json attribute that we do not care about
