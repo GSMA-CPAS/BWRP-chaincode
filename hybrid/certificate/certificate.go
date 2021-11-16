@@ -86,7 +86,7 @@ func GetVerifiedCertificate(ctx contractapi.TransactionContextInterface, msp str
 		return nil, err
 	}
 
-	// make sure the intermediate certs all habe CA flag set:
+	// make sure the intermediate certs all have the CA flag set:
 	err = CheckIntermediates(intermediateCerts)
 	if err != nil {
 		// it is safe to forward local errors
