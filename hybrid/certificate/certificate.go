@@ -74,6 +74,7 @@ func GetVerifiedCertificate(ctx contractapi.TransactionContextInterface, msp str
 	if err != nil {
 		return nil, err
 	}
+
 	if certRevoked {
 		return nil, errorcode.CertInvalid.WithMessage("Certificate in the cert chain has been revoked").LogReturn()
 	}
@@ -203,7 +204,7 @@ func CheckUser(userCert *x509.Certificate) error {
 }
 
 func AnyCertificateRevokedFromPEM(ctx contractapi.TransactionContextInterface, msp string, atTime time.Time, pems ...[]byte) (bool, error) {
-	var certificates []*x509.Certificate
+	certificates := make([]*x509.Certificate, 0)
 
 	// get certificates from PEM
 	for _, pem := range pems {
@@ -211,6 +212,7 @@ func AnyCertificateRevokedFromPEM(ctx contractapi.TransactionContextInterface, m
 		if err != nil {
 			return true, err
 		}
+
 		certificates = append(certificates, certChain...)
 	}
 
@@ -262,7 +264,7 @@ func removeRevokedCertificates(ctx contractapi.TransactionContextInterface, msp 
 	// Check if certificate was revoked for each certificate of array
 	// We iterate from the back so the index doesn't become messed up when removing revoked items from the certificates array
 	for i := len(certificates) - 1; i >= 0; i-- {
-		// distinguised name of issuing CA
+		// distinguished name of issuing CA
 		issuerDN := certificates[i].Issuer.String()
 		// serial number of certificate
 		certSN := certificates[i].SerialNumber.String()
@@ -283,6 +285,7 @@ func removeRevokedCertificates(ctx contractapi.TransactionContextInterface, msp 
 		if len(revokedCertBytes) > 0 {
 			var revokedCert pkix.RevokedCertificate
 			_, err = asn1.Unmarshal(revokedCertBytes, &revokedCert)
+
 			if err != nil {
 				return nil, errorcode.Internal.WithMessage("failed to unmarshal revoked certificate, %v", err).LogReturn()
 			}

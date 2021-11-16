@@ -188,6 +188,7 @@ func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContext
 		// it is safe to forward local errors
 		return "", err
 	}
+
 	return s.GetCertificateValidAtTime(ctx, msp, certType, timestamp)
 }
 
@@ -400,6 +401,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 		// it is safe to forward local errors
 		return err
 	}
+
 	return s.IsValidSignatureAtTime(ctx, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM, timestamp)
 }
 
@@ -640,6 +642,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		// it is safe to forward local errors
 		return "", err
 	}
+
 	signatureObject.Timestamp = timestamp
 
 	// extract and verify user cert based on PEM
@@ -800,6 +803,7 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 		// verify signature
 		log.Debugf("tx #%s: testing signature %s...", txID, signatureObject.Signature)
 		validationError := s.IsValidSignatureAtTime(ctx, targetMSPID, signaturePayload, signatureObject.Signature, signatureObject.Algorithm, signatureObject.Certificate, signatureObject.Timestamp)
+
 		if validationError != nil {
 			// this signature is INVALID
 			results[txID]["valid"] = "false"
@@ -1082,7 +1086,7 @@ func (s *RoamingSmartContract) SubmitCRL(ctx contractapi.TransactionContextInter
 	// Check if list is submitted and signed by intermediate CA
 	if len(certChainPEM) > 0 {
 		// get tx timestamp for revocation check
-		timestamp, err := getTxTimestamp(ctx)
+		timestamp, err := getTxTimestamp(ctx) //nolint:govet // ignore err shadow declaration
 		if err != nil {
 			// it is safe to forward local errors
 			return err
@@ -1104,10 +1108,11 @@ func (s *RoamingSmartContract) SubmitCRL(ctx contractapi.TransactionContextInter
 		err = signingCert.CheckCRLSignature(certificateList)
 		if err != nil {
 			return errorcode.SignatureInvalid.WithMessage("CRL signature is invalid, %v", err).LogReturn()
+		} else { //nolint:staticcheck // just used as information
+			// Otherwise, the CRL must be signed by a root certificate
 		}
-		// Otherwise, the CRL must be signed by a root certificate
 	} else {
-		certificates, err := certificate.ChainFromPEM([]byte(rootPEM))
+		certificates, err := certificate.ChainFromPEM([]byte(rootPEM)) //nolint:govet // ignore err shadow declaration
 		if err != nil {
 			return err
 		}

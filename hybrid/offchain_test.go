@@ -495,8 +495,10 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	// get private key of ORG1 root
 	block, _ = pem.Decode([]byte(ORG1.RootPrivateKey))
 	require.NotNil(t, block)
+
 	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	require.NoError(t, err)
+
 	ecdsaRootPrivateKey, ok := rootPrivateKey.(*ecdsa.PrivateKey)
 	require.Equal(t, ok, true)
 
@@ -522,6 +524,7 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -537,10 +540,12 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 
 	// create revokation object for user cert
 	require.NoError(t, err)
+
 	revokedCert := pkix.RevokedCertificate{
 		SerialNumber:   userCert.SerialNumber,
 		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday
 	}
+
 	revokedCerts := []pkix.RevokedCertificate{revokedCert}
 
 	// create CRL including user cert
@@ -567,6 +572,7 @@ func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
 	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG1.Name, ORG1.Name)
 	require.NoError(t, err)
 	require.Equal(t, len(storedSignatures), 1)
+
 	for _, signatureObject := range storedSignatures {
 		require.Equal(t, signatureObject["valid"], "false")
 		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
@@ -591,16 +597,20 @@ func TestIntermediateCertRevocation(t *testing.T) {
 	// get private key of ORG4 root (used to revoke intermediate certificate)
 	block, _ = pem.Decode([]byte(ORG4.RootPrivateKey))
 	require.NotNil(t, block)
+
 	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	require.NoError(t, err)
+
 	ecdsaRootPrivateKey, ok := rootPrivateKey.(*ecdsa.PrivateKey)
 	require.Equal(t, ok, true)
 
 	// ORG4 signs document:
 	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG4.UserPrivateKey, ORG4.IntermediateCertificate+"\n"+ORG4.UserCertificate)
 	require.NoError(t, err)
+
 	err = ep1.IsValidSignature(ep1, ORG4.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.NoError(t, err)
+
 	signatureJSON, err := json.Marshal(signature)
 	require.NoError(t, err)
 
@@ -612,6 +622,7 @@ func TestIntermediateCertRevocation(t *testing.T) {
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -627,10 +638,12 @@ func TestIntermediateCertRevocation(t *testing.T) {
 
 	// create revokation object for user cert
 	require.NoError(t, err)
+
 	revokedCert := pkix.RevokedCertificate{
 		SerialNumber:   intermediateCert.SerialNumber,
 		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday
 	}
+
 	revokedCerts := []pkix.RevokedCertificate{revokedCert}
 
 	// create CRL including user cert
@@ -657,6 +670,7 @@ func TestIntermediateCertRevocation(t *testing.T) {
 	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG4.Name, ORG4.Name)
 	require.NoError(t, err)
 	require.Equal(t, len(storedSignatures), 1)
+
 	for _, signatureObject := range storedSignatures {
 		require.Equal(t, signatureObject["valid"], "false")
 		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
@@ -681,22 +695,27 @@ func TestUserCertRevocationWithIntermediate(t *testing.T) {
 	// get private key of ORG4 intermediate
 	block, _ = pem.Decode([]byte(ORG4.IntermediatePrivateKey))
 	require.NotNil(t, block)
+
 	intermediatePrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	require.NoError(t, err)
+
 	ecdsaIntermediatePrivateKey, ok := intermediatePrivateKey.(*ecdsa.PrivateKey)
 	require.Equal(t, ok, true)
 
 	// get user cert of ORG4
 	block, _ = pem.Decode([]byte(ORG4.UserCertificate))
 	require.NotNil(t, block)
+
 	userCert, err := x509.ParseCertificate(block.Bytes)
 	require.NoError(t, err)
 
 	// ORG4 signs document:
 	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG4.UserPrivateKey, ORG4.IntermediateCertificate+"\n"+ORG4.UserCertificate)
 	require.NoError(t, err)
+
 	err = ep1.IsValidSignature(ep1, ORG4.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
 	require.NoError(t, err)
+
 	signatureJSON, err := json.Marshal(signature)
 	require.NoError(t, err)
 
@@ -708,8 +727,10 @@ func TestUserCertRevocationWithIntermediate(t *testing.T) {
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
+
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
 	require.NoError(t, err)
 
@@ -723,10 +744,12 @@ func TestUserCertRevocationWithIntermediate(t *testing.T) {
 
 	// create revokation object for user cert
 	require.NoError(t, err)
+
 	revokedCert := pkix.RevokedCertificate{
 		SerialNumber:   userCert.SerialNumber,
 		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday
 	}
+
 	revokedCerts := []pkix.RevokedCertificate{revokedCert}
 
 	// create CRL including user cert
@@ -753,6 +776,7 @@ func TestUserCertRevocationWithIntermediate(t *testing.T) {
 	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG4.Name, ORG4.Name)
 	require.NoError(t, err)
 	require.Equal(t, len(storedSignatures), 1)
+
 	for _, signatureObject := range storedSignatures {
 		require.Equal(t, signatureObject["valid"], "false")
 		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
@@ -782,8 +806,10 @@ func TestRootCertRevokation(t *testing.T) {
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
+
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
 	require.NoError(t, err)
 
@@ -804,17 +830,21 @@ func TestRootCertRevokation(t *testing.T) {
 	// get private key of ORG1 root
 	block, _ = pem.Decode([]byte(ORG1.RootPrivateKey))
 	require.NotNil(t, block)
+
 	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	require.NoError(t, err)
+
 	ecdsaRootPrivateKey, ok := rootPrivateKey.(*ecdsa.PrivateKey)
 	require.Equal(t, ok, true)
 
 	// create revokation object for user cert
 	require.NoError(t, err)
+
 	revokedCert := pkix.RevokedCertificate{
 		SerialNumber:   rootCert.SerialNumber,
 		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday,
 	}
+
 	revokedCerts := []pkix.RevokedCertificate{revokedCert}
 
 	// create CRL including user cert
@@ -825,6 +855,7 @@ func TestRootCertRevokation(t *testing.T) {
 		ThisUpdate:          time.Time{}.Add(time.Hour * 24),
 		NextUpdate:          time.Time{}.Add(time.Hour * 48),
 	}
+
 	crlBytes, err := x509.CreateRevocationList(rand.Reader, revocationList, rootCert, ecdsaRootPrivateKey)
 	require.NoError(t, err)
 
@@ -845,6 +876,7 @@ func TestRootCertRevokation(t *testing.T) {
 	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG1.Name, ORG1.Name)
 	require.NoError(t, err)
 	require.Equal(t, len(storedSignatures), 1)
+
 	for _, signatureObject := range storedSignatures {
 		require.Equal(t, signatureObject["valid"], "false")
 		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
