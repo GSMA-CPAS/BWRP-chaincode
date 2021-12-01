@@ -39,6 +39,12 @@ var (
 	BadJSON = ErrorCode{"ERROR_BAD_JSON", ""}
 	// CertAlreadyExists : certificate was used for signing already
 	CertAlreadyExists = ErrorCode{"ERROR_CERT_ALREADY_EXISTS", ""}
+	// CRLInvalid : the supplied Certificate Revocation List is invalid
+	CRLInvalid = ErrorCode{"ERROR_CRL_INVALID", ""}
+	// BadPEM : something went wrong when parsing a PEM encoded byte array
+	BadPEM = ErrorCode{"ERROR_BAD_PEM", ""}
+	// BadTimeFormat : could not unmarshal time
+	BadTimeFormat = ErrorCode{"ERROR_BAD_TIME_FORMAT", ""}
 )
 
 // ErrorCode is our custom error

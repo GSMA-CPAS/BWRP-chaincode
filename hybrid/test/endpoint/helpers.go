@@ -127,6 +127,13 @@ func (local Endpoint) IsValidSignature(caller Endpoint, creatorMSP string, docum
 	return local.contract.IsValidSignature(caller.txContext, creatorMSP, document, signature, signatureAlgorithm, certListStr)
 }
 
+func (local Endpoint) IsValidSignatureAtTime(caller Endpoint, creatorMSP string, document string, signature string, signatureAlgorithm string, certListStr string, timeString string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
+	return local.contract.IsValidSignatureAtTime(caller.txContext, creatorMSP, document, signature, signatureAlgorithm, certListStr, timeString)
+}
+
 func (local Endpoint) VerifySignatures(caller Endpoint, referenceID string, originMSPID string, targetMSPID string) (map[string]map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
@@ -226,4 +233,28 @@ func ConfigureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	require.NoError(t, err)
 
 	return ep
+}
+
+func (local Endpoint) SetCertificate(caller Endpoint, certType, certData string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.SetCertificate(caller.txContext, certType, certData)
+	local.stub.MockTransactionEnd(txid)
+
+	return err
+}
+
+func (local Endpoint) SubmitCRL(caller Endpoint, crlPEM, certChainPEM string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.SubmitCRL(caller.txContext, crlPEM, certChainPEM)
+	local.stub.MockTransactionEnd(txid)
+
+	return err
 }
