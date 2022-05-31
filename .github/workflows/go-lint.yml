@@ -25,6 +25,7 @@ jobs:
       - name: check go mod
         run: |
           cd hybrid
+          go version
           go mod tidy
           git diff --exit-code go.mod
   golangci:
