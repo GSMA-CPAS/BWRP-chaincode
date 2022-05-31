@@ -28,4 +28,4 @@ jobs:
     - name: run test
       run: |
         cd hybrid
-        go test
+        ./test.sh
