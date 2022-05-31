@@ -16,7 +16,7 @@ INTERMEDIATE=$3
 
 DIR=$(mktemp -d)
 cd $DIR
-echo $DIR 
+echo $DIR 1>&2;
 
 cat <<EOF > ca.ext
 [ default ]
@@ -26,11 +26,11 @@ subjectKeyIdentifier = hash
 EOF
 
 if [ "$CANSIGN" -eq "1" ]; then
-    echo "adding CanSignDocument"
+    echo "adding CanSignDocument" 1>&2;
     attr_hex=$(echo -n '{"attrs":{"CanSignDocument":"yes"}}' | xxd -ps -c 200 | tr -d '\n')
     echo -ne "[default]\n1.2.3.4.5.6.7.8.1=DER:$attr_hex\n" > user.ext
 else
-    echo "NOT adding CanSignDocument"
+    echo "NOT adding CanSignDocument" 1>&2;
     echo -ne "[default]\n" > user.ext
 fi
 
@@ -58,14 +58,14 @@ openssl x509 -in user.pem > user.crt
 
 # verify chain
 if [ "$INTERMEDIATE" -eq "1" ]; then
-openssl verify -x509_strict -CAfile root.pem -untrusted intermediate.pem user.crt
+openssl verify -x509_strict -CAfile root.pem -untrusted intermediate.pem user.crt 1>&2;
 else
-openssl verify -x509_strict -CAfile root.pem user.crt
+openssl verify -x509_strict -CAfile root.pem user.crt 1>&2;
 fi
 
 # export for golang
-echo "#################################################################"
-echo ""
+echo "#################################################################" 1>&2;
+echo "" 1>&2;
 echo -ne '    RootCertificate: `'
 cat root.crt | head -c -1
 echo -e '`,'
@@ -86,7 +86,7 @@ echo -e '`,'
 echo -ne '    UserPrivateKey: `'
 cat user.key | head -c -1
 echo -e '`,'
-echo ""
-echo "#################################################################"
+echo "" 1>&2;
+echo "#################################################################" 1>&2;
 
-echo $DIR
+echo $DIR 1>&2;

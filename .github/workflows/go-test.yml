@@ -21,6 +21,10 @@ jobs:
         go-version: 1.15
     - name: checkout source
       uses: actions/checkout@v2
+    - name: generate certs
+      run: | 
+        cd hybrid
+        test/scripts/gencert_all.sh > test/data/organizations.go
     - name: run test
       run: |
         cd hybrid
