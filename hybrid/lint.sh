@@ -13,7 +13,7 @@ LINTER=$(go env GOPATH)/bin/golangci-lint
 if [ ! -x $LINTER ]; then
     echo "ERROR: linter not found ($LINTER)"
     echo "       please install golangci-lint via:"
-    echo "       curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.38.0"
+    echo "       curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.46.2"
     echo ""
     exit
 fi
