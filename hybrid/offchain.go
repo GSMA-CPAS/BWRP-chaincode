@@ -25,11 +25,11 @@ import (
 const enableDebug = true
 
 func loadTLSFile(filePth string) ([]byte, error) {
-    f, err := os.Open(filePth)
-    if err != nil {
-        return nil, err
-    }
-    return ioutil.ReadAll(f)
+	f, err := os.Open(filePth)
+	if err != nil {
+		return nil, err
+	}
+	return ioutil.ReadAll(f)
 }
 
 func main() {
@@ -51,18 +51,18 @@ func main() {
 	address, addressPresent := os.LookupEnv("CHAINCODE_ADDRESS")
 	tlsDisable, tlsDisablePresent := os.LookupEnv("CORE_CHAINCODE_TLS_DISABLED")
 
-        CORE_PEER_TLS_KEY_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_KEY_FILE"))
+	CORE_PEER_TLS_KEY_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_KEY_FILE"))
 	if err != nil {
-		log.Panicf("Error loadTLSFile : %s")
+		log.Panicf("Error loadTLSFile : %s", err)
 	}
 	CORE_PEER_TLS_CERT_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CERT_FILE"))
 	if err != nil {
-		log.Panicf("Error loadTLSFile : %s")
+		log.Panicf("Error loadTLSFile : %s", err)
 	}
 	CORE_PEER_TLS_ROOTCERT_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CLIENT_CACERT_FILE"))
 	if err != nil {
-		log.Panicf("Error loadTLSFile : %s")
-        }
+		log.Panicf("Error loadTLSFile : %s", err)
+	}
 
 	if ccidPresent || addressPresent || tlsDisablePresent {
 		// chaincode will run as external service
