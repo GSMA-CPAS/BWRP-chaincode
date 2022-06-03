@@ -41,7 +41,9 @@ type DsaSignature struct {
 // a in the same way as expected in nodejs
 func MarshalLowerCamelcaseJSON(v interface{}) ([]byte, error) {
 	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+
 	extra.SetNamingStrategy(LowercaseStartingCamelcase)
+
 	return json.Marshal(v)
 }
 
@@ -54,6 +56,7 @@ func UnmarshalLowerCamelcaseJSON(data []byte, v interface{}) error {
 
 func LowercaseStartingCamelcase(name string) string {
 	newName := []rune{}
+
 	for i, c := range name {
 		if i == 0 {
 			newName = append(newName, unicode.ToLower(c))
@@ -61,6 +64,7 @@ func LowercaseStartingCamelcase(name string) string {
 			newName = append(newName, c)
 		}
 	}
+
 	return string(newName)
 }
 
@@ -71,6 +75,7 @@ func LowercaseStartingCamelcase(name string) string {
 // thus cleaning the entries will filter them out
 func (d OffchainData) MarshalToCleanJSON() ([]byte, error) {
 	type data OffchainData
+
 	x := data(d)
 
 	// copy to "custom" id
@@ -95,6 +100,7 @@ type Signature struct {
 func ExtractFieldFromJSON(jsonInput string, field string) (string, error) {
 	var input map[string]interface{}
 	err := json.Unmarshal([]byte(jsonInput), &input)
+
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to parse signature json, %v", err).LogReturn()
 	}

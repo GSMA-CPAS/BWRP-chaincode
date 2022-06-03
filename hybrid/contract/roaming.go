@@ -5,6 +5,8 @@ package contract
 import (
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -21,6 +23,8 @@ import (
 )
 
 const compositeKeyDefinition string = "owner~type~key~txid"
+
+const expectedIDLength = 64
 
 // RoamingSmartContract creates a new hlf contract api
 type RoamingSmartContract struct {
@@ -49,6 +53,7 @@ func (s *RoamingSmartContract) GetOffchainDBConfig(ctx contractapi.TransactionCo
 	if !acl.LocalCall(ctx) {
 		return "", errorcode.NonLocalAccessDenied.LogReturn()
 	}
+
 	config, err := s.getLocalOffchainDBConfig(ctx)
 
 	// it is safe to forward local errors
@@ -67,7 +72,7 @@ func (s *RoamingSmartContract) CheckOffchainDBConfig(ctx contractapi.Transaction
 		return errorcode.OffchainDBConfig.WithMessage("failed to fetch OffchainDB uri").LogReturn()
 	}
 
-	err = util.OffchainDatabaseCheck(string(uri))
+	err = util.OffchainDatabaseCheck(uri)
 	if err != nil {
 		// DO NOT return the actual error here as this is not ACL restricted and can be called by world!
 		log.Error(err)
@@ -93,6 +98,7 @@ func (s *RoamingSmartContract) getLocalOffchainDBConfig(ctx contractapi.Transact
 	if err != nil {
 		return "", fmt.Errorf("failed to get offchaindb, %v", err)
 	}
+
 	if data == nil {
 		return "", fmt.Errorf("no data in offchaindb config")
 	}
@@ -175,8 +181,19 @@ func (s *RoamingSmartContract) SetCertificate(ctx contractapi.TransactionContext
 	return nil
 }
 
-// GetCertificate retrieves the certificate for a given organization from the ledger
+// GetCertificate retrieves the certificate for a given organization from the ledger and checks validity for the current time
 func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContextInterface, msp string, certType string) (string, error) {
+	timestamp, err := getTxTimestamp(ctx)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+
+	return s.GetCertificateValidAtTime(ctx, msp, certType, timestamp)
+}
+
+// GetCertificate retrieves the certificate for a given organization from the ledger and checks validity at a given time
+func (s *RoamingSmartContract) GetCertificateValidAtTime(ctx contractapi.TransactionContextInterface, msp string, certType string, timeString string) (string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), msp, certType)
 
 	// cert storage location:
@@ -189,6 +206,19 @@ func (s *RoamingSmartContract) GetCertificate(ctx contractapi.TransactionContext
 	certData, err := ctx.GetStub().GetState(storageLocation)
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to get certificate  data, %v", err).LogReturn()
+	}
+
+	if len(certData) > 0 {
+		atTime, err := time.Parse(time.RFC3339, timeString)
+		if err != nil {
+			return "", errorcode.BadTimeFormat.WithMessage("failed to parse time string, %v", err).LogReturn()
+		}
+
+		// filter revoked certificates from the set of root certs
+		certData, err = certificate.FilterRevokedRootCertificates(ctx, msp, certData, atTime)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	log.Debugf("%s(...) got cert %s, ", util.FunctionName(1), string(certData))
@@ -212,6 +242,7 @@ func (s *RoamingSmartContract) GetEvaluateTransactions() []string {
 		"GetReferencePayloadLink",
 		"GetSignatures",
 		"IsValidSignature",
+		"IsValidSignatureAtTime",
 		"GetStorageLocation",
 		"PublishReferencePayloadLink",
 		"StorePrivateDocument",
@@ -227,6 +258,7 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 	// TODO: verify that the golang crypto lib returns random numbers that are good enough to be used here!
 	rand32 := make([]byte, 32)
 	_, err := rand.Read(rand32)
+
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to generate referenceID, %v", err).LogReturn()
 	}
@@ -256,7 +288,7 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 		return "", errorcode.ReferenceIDExists.WithMessage("data for this referenceID %s already exists", referenceID).LogReturn()
 	}
 
-	// fine, data does not exist on ledger -> the calulated referenceID is ok
+	// fine, data does not exist on ledger -> the calculated referenceID is ok
 	return referenceID, nil
 }
 
@@ -264,8 +296,8 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 func (s *RoamingSmartContract) CreateStorageKey(targetMSPID string, referenceID string) (string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), targetMSPID, referenceID)
 
-	if len(referenceID) != 64 {
-		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIDLength {
+		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID), expectedIDLength).LogReturn()
 	}
 
 	if len(targetMSPID) == 0 {
@@ -292,7 +324,7 @@ func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.Transa
 		return false, err
 	}
 
-	// calculate expeced data based on payload hash
+	// calculate expected data based on payload hash
 	expectedPayloadLink := util.CalculateHash(util.HashConcat(referenceID, payloadHash))
 
 	// verify ledger matches the payloadhash
@@ -309,8 +341,8 @@ func (s *RoamingSmartContract) verifyReferencePayloadLink(ctx contractapi.Transa
 func (s *RoamingSmartContract) CreateReferencePayloadLink(referenceID string, payloadHash string) ([2]string, error) {
 	log.Debugf("%s(%s, %s)", util.FunctionName(1), referenceID, payloadHash)
 
-	if len(referenceID) != 64 {
-		return [2]string{"", ""}, errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIDLength {
+		return [2]string{"", ""}, errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID), expectedIDLength).LogReturn()
 	}
 
 	referenceKey := util.CalculateHash(referenceID)
@@ -319,6 +351,7 @@ func (s *RoamingSmartContract) CreateReferencePayloadLink(referenceID string, pa
 	log.Debugf("%s(...) referenceKey   = %s", util.FunctionName(1), referenceKey)
 	log.Debugf("hash in: %s", util.HashConcat(referenceID, payloadHash))
 	log.Debugf("%s(...) referenceValue = %s", util.FunctionName(1), referenceValue)
+
 	return [2]string{referenceKey, referenceValue}, nil
 }
 
@@ -361,12 +394,23 @@ func (s *RoamingSmartContract) GetSignatures(ctx contractapi.TransactionContextI
 	return results, nil
 }
 
-// IsValidSignature verifies if a signature is valid based on the the signaturePayload, the certChain, and the signature
+// IsValidSignature verifies if a signature is valid based on the the signaturePayload, the certChain, and the signature at the tx time
 func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionContextInterface, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM string) error {
+	timestamp, err := getTxTimestamp(ctx)
+	if err != nil {
+		// it is safe to forward local errors
+		return err
+	}
+
+	return s.IsValidSignatureAtTime(ctx, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM, timestamp)
+}
+
+// IsValidSignature verifies if a signature is valid based on the the signaturePayload, the certChain, and the signature at a given time
+func (s *RoamingSmartContract) IsValidSignatureAtTime(ctx contractapi.TransactionContextInterface, signerMSPID, signaturePayload, signature, signatureAlgorithm, certChainPEM string, timeString string) error {
 	log.Debugf("%s(%s, ..., %s)", util.FunctionName(1), signature, signaturePayload)
 
 	// extract and verify user cert based on PEM
-	userCert, err := s.getUserCertFromCertificateChain(ctx, signerMSPID, certChainPEM)
+	userCert, err := s.getUserCertFromCertificateChain(ctx, signerMSPID, certChainPEM, timeString)
 	if err != nil {
 		// it is safe to forward local errors
 		return err
@@ -391,6 +435,7 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 	if err = userCert.CheckSignature(x509signatureAlgorithm, []byte(signaturePayload), signatureBytes); err != nil {
 		return errorcode.SignatureInvalid.WithMessage("signature validation failed, %v", err).LogReturn()
 	}
+
 	log.Infof("IsValidSignature: Valid")
 
 	// document is valid
@@ -398,16 +443,39 @@ func (s *RoamingSmartContract) IsValidSignature(ctx contractapi.TransactionConte
 }
 
 // getUserCertFromCertificateChain verifies if the cert chain is valid, derived from a stored root cert and returnes the user cert
-func (s *RoamingSmartContract) getUserCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string) (*x509.Certificate, error) {
+func (s *RoamingSmartContract) getCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string, timeString string) (*x509.Certificate, error) {
 	// get the root certificates for creatorMSP
-	rootPEM, err := s.GetCertificate(ctx, creatorMSPID, "root")
+	rootPEM, err := s.GetCertificateValidAtTime(ctx, creatorMSPID, "root", timeString)
 	if err != nil {
 		// it is safe to forward local errors
 		return nil, err
 	}
 
+	atTime, err := time.Parse(time.RFC3339, timeString)
+	if err != nil {
+		return nil, errorcode.BadTimeFormat.WithMessage("failed to parse time string, %v", err).LogReturn()
+	}
+
 	// extract and verify user cert based on PEM
-	return certificate.GetVerifiedUserCertificate(rootPEM, certChainPEM)
+	return certificate.GetVerifiedCertificate(ctx, creatorMSPID, rootPEM, certChainPEM, atTime)
+}
+
+// getUserCertFromCertificateChain verifies if the cert chain is valid, derived from a stored root cert and returnes the user cert
+func (s *RoamingSmartContract) getUserCertFromCertificateChain(ctx contractapi.TransactionContextInterface, creatorMSPID, certChainPEM string, timeString string) (*x509.Certificate, error) {
+	userCert, err := s.getCertFromCertificateChain(ctx, creatorMSPID, certChainPEM, timeString)
+	if err != nil {
+		// it is safe to forward local errors
+		return nil, err
+	}
+
+	// make sure user Cert is valid and has all flags:
+	err = certificate.CheckUser(userCert)
+	if err != nil {
+		// it is safe to forward local errors
+		return nil, err
+	}
+
+	return userCert, nil
 }
 
 // GetStorageLocation returns the storage location for
@@ -448,6 +516,7 @@ func (s *RoamingSmartContract) storeData(ctx contractapi.TransactionContextInter
 
 	// store data
 	log.Infof("will store data of type %s on ledger: state[%s] = 0x%s", dataType, storageLocation, hex.EncodeToString(data))
+
 	err = ctx.GetStub().PutState(storageLocation, data)
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to store data, %v", err).LogReturn()
@@ -490,6 +559,7 @@ func (s *RoamingSmartContract) emitStorageEvent(ctx contractapi.TransactionConte
 		` }`
 
 	log.Infof("sending event %s: %s", eventName, payload)
+
 	err = ctx.GetStub().SetEvent(eventName, []byte(payload))
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to send event, %v", err).LogReturn()
@@ -509,12 +579,14 @@ func (s *RoamingSmartContract) PublishReferencePayloadLink(ctx contractapi.Trans
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to check if payload link is already present %v", err).LogReturn()
 	}
+
 	if storedValue != nil {
 		return "", errorcode.PayloadLinkExists.WithMessage("data was found at the given key, cannot overwrite present payloadlinks %v", err).LogReturn()
 	}
 
 	// store payload link
 	log.Infof("will store payload link on ledger, key: %s , value: %s ", key, value)
+
 	err = ctx.GetStub().PutState(key, []byte(value))
 	if err != nil {
 		return "", errorcode.Internal.WithMessage("failed to store payload link, %v", err).LogReturn()
@@ -535,6 +607,7 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 	log.Debugf("%s(%s, ...)", util.FunctionName(1), storageKey)
 
 	var signatureObject util.Signature
+
 	var err error
 
 	// try to extract all values from the given JSON
@@ -563,8 +636,17 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		return "", errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
 	}
 
+	// fetch and store tx timestamp
+	timestamp, err := getTxTimestamp(ctx)
+	if err != nil {
+		// it is safe to forward local errors
+		return "", err
+	}
+
+	signatureObject.Timestamp = timestamp
+
 	// extract and verify user cert based on PEM
-	userCert, err := s.getUserCertFromCertificateChain(ctx, invokingMSPID, signatureObject.Certificate)
+	userCert, err := s.getUserCertFromCertificateChain(ctx, invokingMSPID, signatureObject.Certificate, timestamp)
 	if err != nil {
 		// it is safe to forward local errors
 		return "", err
@@ -576,16 +658,10 @@ func (s *RoamingSmartContract) StoreSignature(ctx contractapi.TransactionContext
 		// it is safe to forward local errors
 		return "", err
 	}
+
 	if certificateExists {
 		return "", errorcode.CertAlreadyExists.WithMessage("certificate was used for signing already").LogReturn()
 	}
-
-	// fetch and store tx timestamp
-	timestamp, err := ctx.GetStub().GetTxTimestamp()
-	if err != nil {
-		return "", errorcode.Internal.WithMessage("failed to fetch transaction timestamp").LogReturn()
-	}
-	signatureObject.Timestamp = ptypes.TimestampString(timestamp)
 
 	// convert to JSON
 	json, err := util.MarshalLowerCamelcaseJSON(signatureObject)
@@ -676,10 +752,12 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 		//it is safe to forward local errors
 		return nil, err
 	}
+
 	log.Debugf("%s() got signature storage key %s", util.FunctionName(1), storageKeySignature)
 
 	// fetch all signatures
 	log.Debugf("fetching all signatures for storageKey %s", storageKeySignature)
+
 	signatures, err := s.GetSignatures(ctx, targetMSPID, storageKeySignature)
 	if err != nil {
 		// it is safe to forward local errors
@@ -695,6 +773,7 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 
 	// verify the given signatures:
 	var results = make(map[string]map[string]string)
+
 	for txID, signatureString := range signatures {
 		// decode json string to object
 		err := util.UnmarshalLowerCamelcaseJSON([]byte(signatureString), &signatureObject)
@@ -723,7 +802,8 @@ func (s *RoamingSmartContract) VerifySignatures(ctx contractapi.TransactionConte
 
 		// verify signature
 		log.Debugf("tx #%s: testing signature %s...", txID, signatureObject.Signature)
-		validationError := s.IsValidSignature(ctx, targetMSPID, signaturePayload, signatureObject.Signature, signatureObject.Algorithm, signatureObject.Certificate)
+		validationError := s.IsValidSignatureAtTime(ctx, targetMSPID, signaturePayload, signatureObject.Signature, signatureObject.Algorithm, signatureObject.Certificate, signatureObject.Timestamp)
+
 		if validationError != nil {
 			// this signature is INVALID
 			results[txID]["valid"] = "false"
@@ -757,8 +837,8 @@ func (s *RoamingSmartContract) StorePrivateDocument(ctx contractapi.TransactionC
 	log.Debugf("%s()", util.FunctionName(1))
 
 	// verify passed data
-	if len(referenceID) != 64 {
-		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != 64", len(referenceID)).LogReturn()
+	if len(referenceID) != expectedIDLength {
+		return "", errorcode.ReferenceIDInvalid.WithMessage("invalid input size of referenceID is invalid as %d != %d", len(referenceID), expectedIDLength).LogReturn()
 	}
 
 	// get caller msp
@@ -838,7 +918,7 @@ func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionCon
 	}
 	defer iterator.Close()
 
-	// There should be exaclty one entry in the history
+	// There should be exactly one entry in the history
 	if !iterator.HasNext() {
 		return nil, errorcode.PayloadLinkMissing.WithMessage("no payloadlink found (referenceID %s)", referenceID).LogReturn()
 	}
@@ -851,6 +931,7 @@ func (s *RoamingSmartContract) fetchBlockchainRef(ctx contractapi.TransactionCon
 	if iterator.HasNext() {
 		return nil, errorcode.PayloadLinkMissing.WithMessage("expected 1, got multiple payloadlinks (referenceID %s)", referenceID).LogReturn()
 	}
+
 	result.TxID = tx.TxId
 	result.Timestamp = time.Unix(tx.GetTimestamp().Seconds, int64(tx.GetTimestamp().Nanos)).Format(time.RFC3339)
 
@@ -885,6 +966,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	// re-verify data hash:
 	expectedPayloadHash := util.CalculateHash(data.Payload)
 	payloadHash := data.PayloadHash
+
 	if payloadHash != expectedPayloadHash {
 		return "", errorcode.Internal.WithMessage("hash mismatch %s != %s", payloadHash, expectedPayloadHash).LogReturn()
 	}
@@ -906,6 +988,7 @@ func (s *RoamingSmartContract) FetchPrivateDocument(ctx contractapi.TransactionC
 	if err != nil {
 		return "", err
 	}
+
 	data.BlockchainRef = *blockchainRef
 
 	// convert to clean json without couchdb "leftovers"
@@ -975,4 +1058,124 @@ func (s *RoamingSmartContract) FetchPrivateDocumentReferenceIDs(ctx contractapi.
 	}
 
 	return string(json), nil
+}
+
+// SubmitCRL takes a PEM encoded CRL and stores included certificates in the contract's revocation list
+func (s *RoamingSmartContract) SubmitCRL(ctx contractapi.TransactionContextInterface, crlPEM string, certChainPEM string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+
+	certificateList, err := x509.ParseCRL([]byte(crlPEM))
+	if err != nil {
+		return errorcode.CRLInvalid.WithMessage("could not parse CRL, %v", err).LogReturn()
+	}
+
+	// get caller msp
+	invokingMSPID, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return errorcode.Internal.WithMessage("failed to get invoking MSP, %v", err).LogReturn()
+	}
+
+	// get the root certificates for creatorMSP
+	rootPEM, err := s.GetCertificate(ctx, invokingMSPID, "root")
+	if err != nil {
+		return err
+	}
+
+	var signingCert *x509.Certificate
+
+	// Check if list is submitted and signed by intermediate CA
+	if len(certChainPEM) > 0 {
+		// get tx timestamp for revocation check
+		timestamp, err := getTxTimestamp(ctx) //nolint:govet // ignore err shadow declaration
+		if err != nil {
+			// it is safe to forward local errors
+			return err
+		}
+
+		// extract and verify user cert based on PEM
+		signingCert, err = s.getCertFromCertificateChain(ctx, invokingMSPID, certChainPEM, timestamp)
+		if err != nil {
+			// it is safe to forward local errors
+			return err
+		}
+
+		// only CAs can revoke certificates
+		if !signingCert.IsCA {
+			return errorcode.CertInvalid.WithMessage("signing certificate is not a CA cert").LogReturn()
+		}
+
+		// verify signature of CRL
+		err = signingCert.CheckCRLSignature(certificateList)
+		if err != nil {
+			return errorcode.SignatureInvalid.WithMessage("CRL signature is invalid, %v", err).LogReturn()
+		} else { //nolint:staticcheck // just used as information
+			// Otherwise, the CRL must be signed by a root certificate
+		}
+	} else {
+		certificates, err := certificate.ChainFromPEM([]byte(rootPEM)) //nolint:govet // ignore err shadow declaration
+		if err != nil {
+			return err
+		}
+
+		// check if any root certificate matches signature
+		for _, certCandidate := range certificates {
+			err = certCandidate.CheckCRLSignature(certificateList)
+			if err == nil {
+				signingCert = certCandidate
+				break
+			}
+		}
+		if signingCert == nil {
+			return errorcode.SignatureInvalid.WithMessage("No valid root certificate found for CRL signature").LogReturn()
+		}
+	}
+
+	// append newly revoked certificates to current list and store
+	err = storeRevokedCertificates(ctx, invokingMSPID, signingCert, certificateList)
+
+	return err
+}
+
+func storeRevokedCertificates(ctx contractapi.TransactionContextInterface, invokingMSPID string, signingCert *x509.Certificate, certificateList *pkix.CertificateList) error {
+	// distinguished name of CRL signer
+	signerDN := signingCert.Subject.String()
+
+	for _, revokedCertificate := range certificateList.TBSCertList.RevokedCertificates {
+		// cunstruct composite key
+		// issuer's dn and revoked certificate's serial number are used as identifiers
+		storageLocation, err := ctx.GetStub().CreateCompositeKey("msp~configtype~data~dn~serialnumber",
+			[]string{invokingMSPID, "certificates", "revoked", signerDN, revokedCertificate.SerialNumber.String()})
+		if err != nil {
+			return errorcode.Internal.WithMessage("failed to create composite key, %v", err).LogReturn()
+		}
+
+		// use asn1, as big int values may not be unmarshalled correctly in json
+		revokedCertificateBytes, err := asn1.Marshal(revokedCertificate)
+		if err != nil {
+			return errorcode.Internal.WithMessage("failed to marshal revocation map, %v", err).LogReturn()
+		}
+
+		// store updated revocation map
+		err = ctx.GetStub().PutState(storageLocation, revokedCertificateBytes)
+		if err != nil {
+			return errorcode.Internal.WithMessage("failed to store revocation map, %v", err).LogReturn()
+		}
+	}
+
+	return nil
+}
+
+func getTxTimestamp(ctx contractapi.TransactionContextInterface) (string, error) {
+	// fetch and store tx timestamp
+	timestampProtobuf, err := ctx.GetStub().GetTxTimestamp()
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to fetch transaction timestamp").LogReturn()
+	}
+
+	timestamp, err := ptypes.Timestamp(timestampProtobuf)
+	if err != nil {
+		return "", errorcode.Internal.WithMessage("failed to cast transaction timestamp").LogReturn()
+	}
+
+	return timestamp.Format(time.RFC3339), nil
 }

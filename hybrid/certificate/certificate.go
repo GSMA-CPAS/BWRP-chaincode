@@ -4,17 +4,21 @@ package certificate
 
 import (
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/json"
 	"encoding/pem"
 	"hybrid/errorcode"
 	"hybrid/util"
+	"time"
 
+	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	log "github.com/sirupsen/logrus"
 )
 
 func ExtractAlgorithmFromUserCert(input []byte) (*x509.SignatureAlgorithm, error) {
 	log.Debugf("%s(...)", util.FunctionName(1))
+
 	certificate, err := GetLastCertificateFromPEM(input)
 	if err != nil {
 		return nil, err
@@ -37,6 +41,7 @@ func ChainFromPEM(input []byte) ([]*x509.Certificate, error) {
 	log.Debugf("%s(...)", util.FunctionName(1))
 
 	var certificates []*x509.Certificate
+
 	for {
 		block, rest := pem.Decode(input)
 		if block == nil {
@@ -57,28 +62,32 @@ func ChainFromPEM(input []byte) ([]*x509.Certificate, error) {
 		input = rest
 	}
 	log.Debugf("parsed %d intermediate and user certs", len(certificates))
+
 	return certificates, nil
 }
 
-func GetVerifiedUserCertificate(rootPEM string, certChainPEM string) (*x509.Certificate, error) {
+func GetVerifiedCertificate(ctx contractapi.TransactionContextInterface, msp string, rootPEM string, certChainPEM string, atTime time.Time) (*x509.Certificate, error) {
 	log.Debugf("%s(..., ...)", util.FunctionName(1))
 
+	// check if any certificate was revoked
+	certRevoked, err := AnyCertificateRevokedFromPEM(ctx, msp, atTime, []byte(certChainPEM))
+	if err != nil {
+		return nil, err
+	}
+
+	if certRevoked {
+		return nil, errorcode.CertInvalid.WithMessage("Certificate in the cert chain has been revoked").LogReturn()
+	}
+
 	// read PEM and create a certificate list
-	intermediateCerts, userCert, err := IntermediateAndUserFromPEM([]byte(certChainPEM))
+	intermediateCerts, targetCert, err := IntermediateAndUserFromPEM([]byte(certChainPEM))
 	if err != nil {
 		// it is safe to forward local errors
 		return nil, err
 	}
 
-	// make sure the intermediate certs all habe CA flag set:
+	// make sure the intermediate certs all have the CA flag set:
 	err = CheckIntermediates(intermediateCerts)
-	if err != nil {
-		// it is safe to forward local errors
-		return nil, err
-	}
-
-	// make sure user Cert is valid and has all flags:
-	err = CheckUser(userCert)
 	if err != nil {
 		// it is safe to forward local errors
 		return nil, err
@@ -93,6 +102,7 @@ func GetVerifiedUserCertificate(rootPEM string, certChainPEM string) (*x509.Cert
 
 	// add intermediate certs to pool
 	interCertPool := x509.NewCertPool()
+
 	for _, cert := range intermediateCerts {
 		interCertPool.AddCert(cert)
 	}
@@ -103,13 +113,13 @@ func GetVerifiedUserCertificate(rootPEM string, certChainPEM string) (*x509.Cert
 		Intermediates: interCertPool,
 	}
 
-	// make sure we can build a trusted chain from root to user
-	_, err = userCert.Verify(opts)
+	// make sure we can build a trusted chain from root to target
+	_, err = targetCert.Verify(opts)
 	if err != nil {
-		return nil, errorcode.CertInvalid.WithMessage("failed to verify user certificate, %v", err).LogReturn()
+		return nil, errorcode.CertInvalid.WithMessage("failed to verify certificate, %v", err).LogReturn()
 	}
 
-	return userCert, nil
+	return targetCert, nil
 }
 
 func IntermediateAndUserFromPEM(input []byte) ([]*x509.Certificate, *x509.Certificate, error) {
@@ -154,11 +164,14 @@ func CheckUser(userCert *x509.Certificate) error {
 
 	// make sure the user has the custom attribude "CanSignDocument" = true
 	var CanSignDocument = false
+
 	var oidCustomAttribute = asn1.ObjectIdentifier{1, 2, 3, 4, 5, 6, 7, 8, 1}
+
 	for _, ext := range userCert.Extensions {
 		if ext.Id.Equal(oidCustomAttribute) {
 			var result map[string]interface{}
 			err := json.Unmarshal(ext.Value, &result)
+
 			if err != nil {
 				// do not abort here, this might just be some
 				// different, non-json attribute that we do not care about
@@ -188,4 +201,118 @@ func CheckUser(userCert *x509.Certificate) error {
 
 	// all fine
 	return nil
+}
+
+func AnyCertificateRevokedFromPEM(ctx contractapi.TransactionContextInterface, msp string, atTime time.Time, pems ...[]byte) (bool, error) {
+	certificates := make([]*x509.Certificate, 0)
+
+	// get certificates from PEM
+	for _, pem := range pems {
+		certChain, err := ChainFromPEM(pem)
+		if err != nil {
+			return true, err
+		}
+
+		certificates = append(certificates, certChain...)
+	}
+
+	return AnyCertificateRevoked(ctx, msp, atTime, certificates...)
+}
+
+func AnyCertificateRevoked(ctx contractapi.TransactionContextInterface, msp string, atTime time.Time, certificates ...*x509.Certificate) (bool, error) {
+	log.Debugf("%s(...)", util.FunctionName(1))
+
+	// remove all certificates that have been revoked from array
+	filteredCertificates, err := removeRevokedCertificates(ctx, msp, certificates, atTime)
+	if err != nil {
+		return true, err
+	}
+
+	// check if any certificates have been removed
+	if len(filteredCertificates) != len(certificates) {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func FilterRevokedRootCertificates(ctx contractapi.TransactionContextInterface, msp string, certsPEM []byte, atTime time.Time) ([]byte, error) {
+	log.Debugf("%s(...)", util.FunctionName(1))
+
+	// retrieve certificates from PEM
+	certificates, err := ChainFromPEM(certsPEM)
+	if err != nil {
+		return nil, err
+	}
+
+	// remove all certificates that have been revoked from array
+	certificates, err = removeRevokedCertificates(ctx, msp, certificates, atTime)
+	if err != nil {
+		return nil, err
+	}
+
+	// encode back to PEM
+	filteredPEM, err := util.EncodeCertificates(certificates...)
+	if err != nil {
+		return nil, errorcode.Internal.WithMessage("could not encode certificates to PEM, %s", err).LogReturn()
+	}
+
+	return filteredPEM, nil
+}
+
+func removeRevokedCertificates(ctx contractapi.TransactionContextInterface, msp string, certificates []*x509.Certificate, atTime time.Time) ([]*x509.Certificate, error) {
+	// Check if certificate was revoked for each certificate of array
+	// We iterate from the back so the index doesn't become messed up when removing revoked items from the certificates array
+	for i := len(certificates) - 1; i >= 0; i-- {
+		// distinguished name of issuing CA
+		issuerDN := certificates[i].Issuer.String()
+		// serial number of certificate
+		certSN := certificates[i].SerialNumber.String()
+
+		// build composite key for issuer and certificate
+		compositeKey, err := ctx.GetStub().CreateCompositeKey("msp~configtype~data~dn~serialnumber", []string{msp, "certificates", "revoked", issuerDN, certSN})
+		if err != nil {
+			return nil, errorcode.Internal.WithMessage("failed to create composite key, %v", err).LogReturn()
+		}
+
+		// retrieve potenitally revoked certificate
+		revokedCertBytes, err := ctx.GetStub().GetState(compositeKey)
+		if err != nil {
+			return nil, errorcode.Internal.WithMessage("failed to query revoked cert, %v", err).LogReturn()
+		}
+
+		// Check if a revoked certificate was retrieved
+		if len(revokedCertBytes) > 0 {
+			var revokedCert pkix.RevokedCertificate
+			_, err = asn1.Unmarshal(revokedCertBytes, &revokedCert)
+
+			if err != nil {
+				return nil, errorcode.Internal.WithMessage("failed to unmarshal revoked certificate, %v", err).LogReturn()
+			}
+
+			// Check if the revocation happened before the target time
+			if revokedCert.RevocationTime.Before(atTime) {
+				// remove certificate from array
+				certificates = append(certificates[:i], certificates[i+1:]...)
+			} else if len(revokedCert.Extensions) > 0 {
+				// An earlier invalidity date may have been specified in extension
+				for _, extension := range revokedCert.Extensions {
+					// Check if extension is Invalidity Date (rfc5280: 5.3.2), OID: id-ce 24
+					if extension.Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 24}) {
+						var timestamp time.Time
+						_, err := asn1.Unmarshal(extension.Value, &timestamp)
+						if err != nil {
+							return nil, errorcode.Internal.WithMessage("could not unmarshal time value: %s", err).LogReturn()
+						}
+						if timestamp.Before(atTime) {
+							// remove certificate from array
+							certificates = append(certificates[:i], certificates[i+1:]...)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return certificates, nil
 }

@@ -5,14 +5,21 @@ package main
 //see https://github.com/hyperledger/fabric-samples/blob/master/asset-transfer-basic/chaincode-go/chaincode/smartcontract_test.go
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"hybrid/errorcode"
 	"hybrid/test/chaincode"
 	. "hybrid/test/data"
 	"hybrid/test/endpoint"
 	"hybrid/util"
+	"math/big"
 	"os"
 	"testing"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -33,6 +40,7 @@ func verifyData(t *testing.T, dataJSON string, document *Document) {
 
 func setupTestCase(t *testing.T, orgA Organization, orgB Organization) (func(t *testing.T), endpoint.Endpoint, endpoint.Endpoint) {
 	testName := util.FunctionName(2)
+
 	log.Infof("################################################################################")
 	log.Infof("running test " + testName)
 	log.Infof("################################################################################")
@@ -76,8 +84,10 @@ func TestOffchainDBConfig(t *testing.T) {
 	// note that this is not allowed on chaincode calls
 	// as getOffchainDBConfig is not exported
 	os.Setenv("CORE_PEER_LOCALMSPID", ORG1.Name)
+
 	uri, err := ep1.GetOffchainDBConfig(ep1)
 	require.NoError(t, err)
+
 	log.Infof("read back uri <%s>\n", uri)
 
 	// read back with txcontext ORG2 -> this has to fail!
@@ -121,6 +131,7 @@ func TestExchangeAndSigning(t *testing.T) {
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -147,7 +158,7 @@ func TestExchangeAndSigning(t *testing.T) {
 
 	// ### org1 signs document:
 	signaturePayload := chaincode.CreateSignaturePayload(ORG1.Name, referenceID, referenceValue)
-	signature, err := chaincode.SignPayload(signaturePayload, ORG1.PrivateKey, ORG1.UserCertificate)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG1.UserPrivateKey, ORG1.UserCertificate)
 	require.NoError(t, err)
 	signatureJSON, err := json.Marshal(signature)
 	require.NoError(t, err)
@@ -168,9 +179,11 @@ func TestExchangeAndSigning(t *testing.T) {
 	// QUERY create storage key
 	storagekeyORG2, err := ep2.CreateStorageKey(ep2, ORG2.Name, referenceID)
 	require.NoError(t, err)
+
 	signaturePayload = chaincode.CreateSignaturePayload(ORG2.Name, referenceID, referenceValue)
-	signature, err = chaincode.SignPayload(signaturePayload, ORG2.PrivateKey, ORG2.UserCertificate)
+	signature, err = chaincode.SignPayload(signaturePayload, ORG2.UserPrivateKey, ORG2.UserCertificate)
 	require.NoError(t, err)
+
 	signatureJSON, err = json.Marshal(signature)
 	require.NoError(t, err)
 
@@ -232,6 +245,7 @@ func TestStoreDocumentPayloadLink(t *testing.T) {
 	// publish reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -252,11 +266,10 @@ func TestStoreDocumentPayloadLink(t *testing.T) {
 	require.EqualValues(t, data.PayloadHash, ExampleDocument.PayloadHash)
 	require.EqualValues(t, data.ReferenceID, referenceID)
 
-	require.EqualValues(t, data.BlockchainRef.Type, `hlf`)
 	// todo: check those as well!
 	// require.EqualValues(t, data.BlockchainRef.TxID, txID)
 	// require.EqualValues(t, data.BlockchainRef.Timestamp, timestamp)
-
+	require.EqualValues(t, data.BlockchainRef.Type, `hlf`)
 }
 
 // publish a bad payloadlink and make sure we detect it
@@ -278,6 +291,7 @@ func TestStoreBadDocumentPayloadLink(t *testing.T) {
 	// publish a BAD reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, "bad")
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -307,6 +321,7 @@ func TestDocumentDelete(t *testing.T) {
 	// publish reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -343,7 +358,6 @@ func TestErrorHandling(t *testing.T) {
 	_, err := ep1.CreateStorageKey(ep1, "targetMSP", "invalid_docid")
 	require.Error(t, err)
 	log.Infof("got error string as expected! (%s)\n", err.Error())
-
 }
 
 func TestSignatureValidation(t *testing.T) {
@@ -362,6 +376,7 @@ func TestSignatureValidation(t *testing.T) {
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -369,7 +384,7 @@ func TestSignatureValidation(t *testing.T) {
 
 	// ### org1 signs document:
 	signaturePayload := chaincode.CreateSignaturePayload(ORG1.Name, referenceID, referenceValue)
-	signature, err := chaincode.SignPayload(signaturePayload, ORG1.PrivateKey, ORG1.UserCertificate)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG1.UserPrivateKey, ORG1.UserCertificate)
 	require.NoError(t, err)
 
 	// Validating signature
@@ -395,7 +410,7 @@ func TestFalseSignatureValidation(t *testing.T) {
 	// publish reference payload link on the ledger
 	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
-	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
@@ -417,7 +432,7 @@ lhx7sgedlY6X78lfsAvwwQe0uXj6JhioQIanYpUxDzpwPj/42Oq0rtgDAjEAu0De
 fTAO/i0POc1ltcZ7QFY1GTYIaUOBGuYFDJambWQWh7jqcvZf42grSXQ0YvdB
 -----END CERTIFICATE-----`
 	signaturePayload := chaincode.CreateSignaturePayload(ORG1.Name, referenceID, referenceValue)
-	signature, err := chaincode.SignPayload(signaturePayload, ORG1.PrivateKey, badCert)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG1.UserPrivateKey, badCert)
 	require.NoError(t, err)
 
 	// Validating signature
@@ -443,6 +458,7 @@ func TestSignatureValidationMissingCanSignDocument(t *testing.T) {
 	// PUBLISH reference payload link on the ledger
 	referencePayloadLink, err := ep3.CreateReferencePayloadLink(ep3, referenceID, ExampleDocument.PayloadHash)
 	require.NoError(t, err)
+
 	referenceKey := referencePayloadLink[0]
 	referenceValue := referencePayloadLink[1]
 	err = ep3.InvokePublishReferencePayloadLink(ep3, referenceKey, referenceValue)
@@ -450,14 +466,419 @@ func TestSignatureValidationMissingCanSignDocument(t *testing.T) {
 
 	// ### org3 signs document:
 	signaturePayload := chaincode.CreateSignaturePayload(ORG3.Name, referenceID, referenceValue)
-	signature, err := chaincode.SignPayload(signaturePayload, ORG3.PrivateKey, ORG3.UserCertificate)
+	signature, err := chaincode.SignPayload(signaturePayload, ORG3.UserPrivateKey, ORG3.UserCertificate)
 	require.NoError(t, err)
 
 	// Validating signature
-	err = ep3.IsValidSignature(ep1, ORG1.Name, signaturePayload, signature.Signature, signature.Algorithm, signature.Certificate)
+	err = ep3.IsValidSignature(ep1, ORG3.Name, signaturePayload, signature.Signature, signature.Algorithm, signature.Certificate)
 	// as this cert misses the flag, we should not be able to verify it:
 	require.Error(t, err)
 	// check that we get the proper error:
 	require.EqualValues(t, err.Error(), `{"code":"ERROR_CERT_INVALID","message":"CanSignDocument not set"}`)
+}
 
+func TestCRLSubmissionAndUserCertRevocation(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, _ := setupTestCase(t, ORG1, ORG2)
+	defer cleanupFunc(t)
+
+	// add root certificate
+	err := ep1.SetCertificate(ep1, "root", ORG1.RootCertificate)
+	require.NoError(t, err)
+
+	// get root cert of ORG1
+	block, _ := pem.Decode([]byte(ORG1.RootCertificate))
+	require.NotNil(t, block)
+	rootCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// get private key of ORG1 root
+	block, _ = pem.Decode([]byte(ORG1.RootPrivateKey))
+	require.NotNil(t, block)
+
+	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	ecdsaRootPrivateKey, ok := rootPrivateKey.(*ecdsa.PrivateKey)
+	require.Equal(t, ok, true)
+
+	// get user cert of ORG1
+	block, _ = pem.Decode([]byte(ORG1.UserCertificate))
+	require.NotNil(t, block)
+	userCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// org1 signs document:
+	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG1.UserPrivateKey, ORG1.UserCertificate)
+	require.NoError(t, err)
+	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
+	require.NoError(t, err)
+	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+
+	// calc referenceID
+	referenceID, err := ep1.CreateReferenceID(ep1)
+	require.NoError(t, err)
+	log.Infof("got referenceId <%s>\n", referenceID)
+
+	// PUBLISH reference payload link on the ledger
+	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// QUERY create storage key
+	storagekeyORG1, err := ep1.CreateStorageKey(ep1, ORG1.Name, referenceID)
+	require.NoError(t, err)
+
+	// INVOKE storeSignature (here only org1, can also be all endorsers)
+	err = ep1.InvokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
+	require.NoError(t, err)
+
+	// create revokation object for user cert
+	require.NoError(t, err)
+
+	revokedCert := pkix.RevokedCertificate{
+		SerialNumber:   userCert.SerialNumber,
+		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday
+	}
+
+	revokedCerts := []pkix.RevokedCertificate{revokedCert}
+
+	// create CRL including user cert
+	revocationList := &x509.RevocationList{
+		RevokedCertificates: revokedCerts,
+		SignatureAlgorithm:  x509.ECDSAWithSHA256,
+		Number:              big.NewInt(1),
+		ThisUpdate:          time.Time{}.Add(time.Hour * 24),
+		NextUpdate:          time.Time{}.Add(time.Hour * 48),
+	}
+
+	crlBytes, err := x509.CreateRevocationList(rand.Reader, revocationList, rootCert, ecdsaRootPrivateKey)
+	require.NoError(t, err)
+
+	// submit CRL
+	err = ep1.SubmitCRL(ep1, string(crlBytes), "")
+	require.NoError(t, err)
+
+	// validate signature after revokation
+	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
+	require.Error(t, err)
+
+	// revoked signature should be returned but revocation must be indicated
+	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG1.Name, ORG1.Name)
+	require.NoError(t, err)
+	require.Equal(t, len(storedSignatures), 1)
+
+	for _, signatureObject := range storedSignatures {
+		require.Equal(t, signatureObject["valid"], "false")
+		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
+	}
+}
+
+func TestIntermediateCertRevocation(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, _ := setupTestCase(t, ORG4, ORG2)
+	defer cleanupFunc(t)
+
+	// add root certificate
+	err := ep1.SetCertificate(ep1, "root", ORG4.RootCertificate)
+	require.NoError(t, err)
+
+	// get intermediate cert of ORG4
+	block, _ := pem.Decode([]byte(ORG4.IntermediateCertificate))
+	require.NotNil(t, block)
+	intermediateCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// get private key of ORG4 root (used to revoke intermediate certificate)
+	block, _ = pem.Decode([]byte(ORG4.RootPrivateKey))
+	require.NotNil(t, block)
+
+	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	ecdsaRootPrivateKey, ok := rootPrivateKey.(*ecdsa.PrivateKey)
+	require.Equal(t, ok, true)
+
+	// ORG4 signs document:
+	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG4.UserPrivateKey, ORG4.IntermediateCertificate+"\n"+ORG4.UserCertificate)
+	require.NoError(t, err)
+
+	err = ep1.IsValidSignature(ep1, ORG4.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
+	require.NoError(t, err)
+
+	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+
+	// calc referenceID
+	referenceID, err := ep1.CreateReferenceID(ep1)
+	require.NoError(t, err)
+	log.Infof("got referenceId <%s>\n", referenceID)
+
+	// PUBLISH reference payload link on the ledger
+	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// QUERY create storage key
+	storagekeyORG4, err := ep1.CreateStorageKey(ep1, ORG4.Name, referenceID)
+	require.NoError(t, err)
+
+	// INVOKE storeSignature (here only org4, can also be all endorsers)
+	err = ep1.InvokeStoreSignature(ep1, storagekeyORG4, string(signatureJSON))
+	require.NoError(t, err)
+
+	// create revokation object for user cert
+	require.NoError(t, err)
+
+	revokedCert := pkix.RevokedCertificate{
+		SerialNumber:   intermediateCert.SerialNumber,
+		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday
+	}
+
+	revokedCerts := []pkix.RevokedCertificate{revokedCert}
+
+	// create CRL including user cert
+	revocationList := &x509.RevocationList{
+		RevokedCertificates: revokedCerts,
+		SignatureAlgorithm:  x509.ECDSAWithSHA256,
+		Number:              big.NewInt(1),
+		ThisUpdate:          time.Time{}.Add(time.Hour * 24),
+		NextUpdate:          time.Time{}.Add(time.Hour * 48),
+	}
+
+	crlBytes, err := x509.CreateRevocationList(rand.Reader, revocationList, intermediateCert, ecdsaRootPrivateKey)
+	require.NoError(t, err)
+
+	// submit CRL
+	err = ep1.SubmitCRL(ep1, string(crlBytes), "")
+	require.NoError(t, err)
+
+	// validate signature after revokation
+	err = ep1.IsValidSignature(ep1, ORG4.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
+	require.Error(t, err)
+
+	// revoked signature should be returned but revocation must be indicated
+	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG4.Name, ORG4.Name)
+	require.NoError(t, err)
+	require.Equal(t, len(storedSignatures), 1)
+
+	for _, signatureObject := range storedSignatures {
+		require.Equal(t, signatureObject["valid"], "false")
+		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
+	}
+}
+
+func TestUserCertRevocationWithIntermediate(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, _ := setupTestCase(t, ORG4, ORG2)
+	defer cleanupFunc(t)
+
+	// add root certificate
+	err := ep1.SetCertificate(ep1, "root", ORG4.RootCertificate)
+	require.NoError(t, err)
+
+	// get intermediate cert of ORG4
+	block, _ := pem.Decode([]byte(ORG4.IntermediateCertificate))
+	require.NotNil(t, block)
+	intermediateCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// get private key of ORG4 intermediate
+	block, _ = pem.Decode([]byte(ORG4.IntermediatePrivateKey))
+	require.NotNil(t, block)
+
+	intermediatePrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	ecdsaIntermediatePrivateKey, ok := intermediatePrivateKey.(*ecdsa.PrivateKey)
+	require.Equal(t, ok, true)
+
+	// get user cert of ORG4
+	block, _ = pem.Decode([]byte(ORG4.UserCertificate))
+	require.NotNil(t, block)
+
+	userCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// ORG4 signs document:
+	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG4.UserPrivateKey, ORG4.IntermediateCertificate+"\n"+ORG4.UserCertificate)
+	require.NoError(t, err)
+
+	err = ep1.IsValidSignature(ep1, ORG4.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
+	require.NoError(t, err)
+
+	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+
+	// calc referenceID
+	referenceID, err := ep1.CreateReferenceID(ep1)
+	require.NoError(t, err)
+	log.Infof("got referenceId <%s>\n", referenceID)
+
+	// PUBLISH reference payload link on the ledger
+	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+
+	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// QUERY create storage key
+	storagekeyORG4, err := ep1.CreateStorageKey(ep1, ORG4.Name, referenceID)
+	require.NoError(t, err)
+
+	// INVOKE storeSignature (here only org4, can also be all endorsers)
+	err = ep1.InvokeStoreSignature(ep1, storagekeyORG4, string(signatureJSON))
+	require.NoError(t, err)
+
+	// create revokation object for user cert
+	require.NoError(t, err)
+
+	revokedCert := pkix.RevokedCertificate{
+		SerialNumber:   userCert.SerialNumber,
+		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday
+	}
+
+	revokedCerts := []pkix.RevokedCertificate{revokedCert}
+
+	// create CRL including user cert
+	revocationList := &x509.RevocationList{
+		RevokedCertificates: revokedCerts,
+		SignatureAlgorithm:  x509.ECDSAWithSHA256,
+		Number:              big.NewInt(1),
+		ThisUpdate:          time.Time{}.Add(time.Hour * 24),
+		NextUpdate:          time.Time{}.Add(time.Hour * 48),
+	}
+
+	crlBytes, err := x509.CreateRevocationList(rand.Reader, revocationList, intermediateCert, ecdsaIntermediatePrivateKey)
+	require.NoError(t, err)
+
+	// submit CRL
+	err = ep1.SubmitCRL(ep1, string(crlBytes), ORG4.IntermediateCertificate)
+	require.NoError(t, err)
+
+	// validate signature after revokation
+	err = ep1.IsValidSignature(ep1, ORG4.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
+	require.Error(t, err)
+
+	// revoked signature should be returned but revocation must be indicated
+	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG4.Name, ORG4.Name)
+	require.NoError(t, err)
+	require.Equal(t, len(storedSignatures), 1)
+
+	for _, signatureObject := range storedSignatures {
+		require.Equal(t, signatureObject["valid"], "false")
+		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
+	}
+}
+
+func TestRootCertRevokation(t *testing.T) {
+	// set up
+	cleanupFunc, ep1, _ := setupTestCase(t, ORG1, ORG2)
+	defer cleanupFunc(t)
+
+	// add root certificate
+	err := ep1.SetCertificate(ep1, "root", ORG1.RootCertificate)
+	require.NoError(t, err)
+
+	// org1 signs document:
+	signature, err := chaincode.SignPayload(ExampleDocument.Payload, ORG1.UserPrivateKey, ORG1.UserCertificate)
+	require.NoError(t, err)
+	signatureJSON, err := json.Marshal(signature)
+	require.NoError(t, err)
+
+	// calc referenceID
+	referenceID, err := ep1.CreateReferenceID(ep1)
+	require.NoError(t, err)
+	log.Infof("got referenceId <%s>\n", referenceID)
+
+	// PUBLISH reference payload link on the ledger
+	referencePayloadLink, err := ep1.CreateReferencePayloadLink(ep1, referenceID, ExampleDocument.PayloadHash)
+	require.NoError(t, err)
+
+	referenceKey := referencePayloadLink[0]
+	referenceValue := referencePayloadLink[1]
+
+	err = ep1.InvokePublishReferencePayloadLink(ep1, referenceKey, referenceValue)
+	require.NoError(t, err)
+
+	// QUERY create storage key
+	storagekeyORG1, err := ep1.CreateStorageKey(ep1, ORG1.Name, referenceID)
+	require.NoError(t, err)
+
+	// INVOKE storeSignature (here only org1, can also be all endorsers)
+	err = ep1.InvokeStoreSignature(ep1, storagekeyORG1, string(signatureJSON))
+	require.NoError(t, err)
+
+	// get root cert of ORG1
+	block, _ := pem.Decode([]byte(ORG1.RootCertificate))
+	require.NotNil(t, block)
+	rootCert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	// get private key of ORG1 root
+	block, _ = pem.Decode([]byte(ORG1.RootPrivateKey))
+	require.NotNil(t, block)
+
+	rootPrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	ecdsaRootPrivateKey, ok := rootPrivateKey.(*ecdsa.PrivateKey)
+	require.Equal(t, ok, true)
+
+	// create revokation object for user cert
+	require.NoError(t, err)
+
+	revokedCert := pkix.RevokedCertificate{
+		SerialNumber:   rootCert.SerialNumber,
+		RevocationTime: time.Now().AddDate(0, 0, -1), // yesterday,
+	}
+
+	revokedCerts := []pkix.RevokedCertificate{revokedCert}
+
+	// create CRL including user cert
+	revocationList := &x509.RevocationList{
+		RevokedCertificates: revokedCerts,
+		SignatureAlgorithm:  x509.ECDSAWithSHA256,
+		Number:              big.NewInt(1),
+		ThisUpdate:          time.Time{}.Add(time.Hour * 24),
+		NextUpdate:          time.Time{}.Add(time.Hour * 48),
+	}
+
+	crlBytes, err := x509.CreateRevocationList(rand.Reader, revocationList, rootCert, ecdsaRootPrivateKey)
+	require.NoError(t, err)
+
+	// submit CRL
+	err = ep1.SubmitCRL(ep1, string(crlBytes), "")
+	require.NoError(t, err)
+
+	// validate signature after revokation
+	err = ep1.IsValidSignature(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate)
+	require.Error(t, err)
+
+	// validate signature before revokation
+	timeBeforeRevocation := time.Now().AddDate(0, 0, -2).Format(time.RFC3339)
+	err = ep1.IsValidSignatureAtTime(ep1, ORG1.Name, ExampleDocument.Payload, signature.Signature, signature.Algorithm, signature.Certificate, timeBeforeRevocation)
+	require.NoError(t, err)
+
+	// revoked signature should be returned but revocation must be indicated
+	storedSignatures, err := ep1.VerifySignatures(ep1, referenceID, ORG1.Name, ORG1.Name)
+	require.NoError(t, err)
+	require.Equal(t, len(storedSignatures), 1)
+
+	for _, signatureObject := range storedSignatures {
+		require.Equal(t, signatureObject["valid"], "false")
+		require.Equal(t, signatureObject["errorcode"], "ERROR_CERT_INVALID")
+	}
 }

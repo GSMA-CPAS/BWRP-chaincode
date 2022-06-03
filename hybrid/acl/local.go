@@ -26,5 +26,6 @@ func LocalCall(ctx contractapi.TransactionContextInterface) bool {
 
 	// access denied
 	log.Errorf("ACL LocalCall: ACCESS VIOLATION by %s. Only local calls are allowed", invokingMSPID)
+
 	return false
 }

@@ -6,7 +6,7 @@ import (
 	"hybrid/contract"
 	"hybrid/test/chaincode"
 	couchdb "hybrid/test/couchdb_dummy"
-	. "hybrid/test/data"
+	. "hybrid/test/data" //nolint:stylecheck // allow dot imports here
 	"hybrid/test/historyshimtest"
 	"hybrid/test/mocks"
 	"hybrid/util"
@@ -34,24 +34,28 @@ type Endpoint struct {
 func (local Endpoint) StorePrivateDocument(caller Endpoint, targetMSPID string, referenceID string, payloadHash string) (string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.StorePrivateDocument(caller.txContext, targetMSPID, referenceID, payloadHash)
 }
 
 func (local Endpoint) FetchPrivateDocument(caller Endpoint, referenceID string) (string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.FetchPrivateDocument(caller.txContext, referenceID)
 }
 
 func (local Endpoint) DeletePrivateDocument(caller Endpoint, referenceID string) error {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.DeletePrivateDocument(caller.txContext, referenceID)
 }
 
 func (local Endpoint) FetchPrivateDocumentReferenceIDs(caller Endpoint) (string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.FetchPrivateDocumentReferenceIDs(caller.txContext)
 }
 
@@ -59,30 +63,35 @@ func (local Endpoint) CreateStorageKey(caller Endpoint, targetMSPID string, refe
 	log.Debugf("%s()", util.FunctionName(1))
 	log.Debugf("%s", referenceID)
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.CreateStorageKey(targetMSPID, referenceID) // TODO: no tx context in this func?!
 }
 
 func (local Endpoint) CreateReferenceID(caller Endpoint) (string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.CreateReferenceID(caller.txContext)
 }
 
 func (local Endpoint) CreateReferencePayloadLink(caller Endpoint, referenceID string, payloadHash string) ([2]string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.CreateReferencePayloadLink(referenceID, payloadHash)
 }
 
 func (local Endpoint) GetOffchainDBConfig(caller Endpoint) (string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.GetOffchainDBConfig(caller.txContext)
 }
 
 func (local Endpoint) CheckOffchainDBConfig(caller Endpoint) error {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", caller.org.Name)
+
 	return local.contract.CheckOffchainDBConfig(caller.txContext)
 }
 
@@ -94,6 +103,7 @@ func (local Endpoint) SetOffchainDBConfig(uri string) error {
 	var transient map[string][]byte = make(map[string][]byte)
 	transient["uri"] = []byte(uri)
 	local.stub.TransientMap = transient
+
 	return local.contract.SetOffchainDBConfig(local.txContext)
 }
 
@@ -106,48 +116,64 @@ func (local Endpoint) SetOffchainDBConfig(uri string) error {
 func (local Endpoint) GetSignatures(caller Endpoint, targetMSPID string, key string) (map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.GetSignatures(caller.txContext, targetMSPID, key)
 }
 
 func (local Endpoint) IsValidSignature(caller Endpoint, creatorMSP string, document string, signature string, signatureAlgorithm string, certListStr string) error {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.IsValidSignature(caller.txContext, creatorMSP, document, signature, signatureAlgorithm, certListStr)
+}
+
+func (local Endpoint) IsValidSignatureAtTime(caller Endpoint, creatorMSP string, document string, signature string, signatureAlgorithm string, certListStr string, timeString string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
+	return local.contract.IsValidSignatureAtTime(caller.txContext, creatorMSP, document, signature, signatureAlgorithm, certListStr, timeString)
 }
 
 func (local Endpoint) VerifySignatures(caller Endpoint, referenceID string, originMSPID string, targetMSPID string) (map[string]map[string]string, error) {
 	log.Debugf("%s()", util.FunctionName(1))
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+
 	return local.contract.VerifySignatures(caller.txContext, referenceID, targetMSPID)
 }
 
 func (local Endpoint) InvokeSetCertificate(caller Endpoint, certType string, certData string) error {
 	log.Debugf("%s()", util.FunctionName(1))
+
 	txid := local.org.Name + ":" + uuid.New().String()
 	local.stub.MockTransactionStart(txid)
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
 	err := local.contract.SetCertificate(caller.txContext, certType, certData)
 	local.stub.MockTransactionEnd(txid)
+
 	return err
 }
 
 func (local Endpoint) InvokePublishReferencePayloadLink(caller Endpoint, key string, value string) error {
 	log.Debugf("%s()", util.FunctionName(1))
+
 	txid := local.org.Name + ":" + uuid.New().String()
 	local.stub.MockTransactionStart(txid)
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
 	_, err := local.contract.PublishReferencePayloadLink(caller.txContext, key, value)
 	local.stub.MockTransactionEnd(txid)
+
 	return err
 }
 
 func (local Endpoint) InvokeStoreSignature(caller Endpoint, key string, signatureJSON string) error {
 	log.Debugf("%s()", util.FunctionName(1))
+
 	txid := local.org.Name + ":" + uuid.New().String()
 	local.stub.MockTransactionStart(txid)
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
 	_, err := local.contract.StoreSignature(caller.txContext, key, signatureJSON)
 	local.stub.MockTransactionEnd(txid)
+
 	return err
 }
 
@@ -165,8 +191,8 @@ func CreateEndpoints(t *testing.T, orgA Organization, orgB Organization) (Endpoi
 	return epORGA, epORGB
 }
 
-func (ep *Endpoint) Close() {
-	ep.couchdb.Close()
+func (local *Endpoint) Close() {
+	local.couchdb.Close()
 }
 
 func ConfigureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Organization) Endpoint {
@@ -203,7 +229,32 @@ func ConfigureEndpoint(t *testing.T, mockStub *historyshimtest.MockStub, org Org
 	require.EqualValues(t, uri, url)
 
 	// store root cert:
-	err = ep.InvokeSetCertificate(ep, "root", string(ep.org.RootCertificate))
+	err = ep.InvokeSetCertificate(ep, "root", ep.org.RootCertificate)
 	require.NoError(t, err)
+
 	return ep
+}
+
+func (local Endpoint) SetCertificate(caller Endpoint, certType, certData string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.SetCertificate(caller.txContext, certType, certData)
+	local.stub.MockTransactionEnd(txid)
+
+	return err
+}
+
+func (local Endpoint) SubmitCRL(caller Endpoint, crlPEM, certChainPEM string) error {
+	log.Debugf("%s()", util.FunctionName(1))
+
+	txid := local.org.Name + ":" + uuid.New().String()
+	local.stub.MockTransactionStart(txid)
+	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
+	err := local.contract.SubmitCRL(caller.txContext, crlPEM, certChainPEM)
+	local.stub.MockTransactionEnd(txid)
+
+	return err
 }
