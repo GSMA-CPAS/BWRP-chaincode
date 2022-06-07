@@ -6,10 +6,6 @@ on:
   push:
     tags:
       - v*
-    branches:
-      - master
-      - main
-      - ssch*
   pull_request:
 jobs:
   license-check:

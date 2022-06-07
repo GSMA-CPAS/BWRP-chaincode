@@ -256,7 +256,8 @@ func (s *RoamingSmartContract) CreateReferenceID(ctx contractapi.TransactionCont
 	log.Debugf("%s()", util.FunctionName(1))
 
 	// TODO: verify that the golang crypto lib returns random numbers that are good enough to be used here!
-	rand32 := make([]byte, 32)
+	const rand32size = 32
+	rand32 := make([]byte, rand32size)
 	_, err := rand.Read(rand32)
 
 	if err != nil {

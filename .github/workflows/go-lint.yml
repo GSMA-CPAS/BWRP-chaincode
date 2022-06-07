@@ -6,10 +6,6 @@ on:
   push:
     tags:
       - v*
-    branches:
-      - master
-      - main
-      - ssch*
   pull_request:
 jobs:
   go-mod:
@@ -19,12 +15,13 @@ jobs:
       - name: install go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.15
+          go-version: 1.18.2
       - name: checkout source
         uses: actions/checkout@v2
       - name: check go mod
         run: |
           cd hybrid
+          go version
           go mod tidy
           git diff --exit-code go.mod
   golangci:
@@ -33,11 +30,15 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
+      - name: generate mocks
+        run: | 
+          cd hybrid
+          go generate ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
+        uses: golangci/golangci-lint-action@v3
         with:
           # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
-          version: v1.33
+          version: v1.38
 
           # Optional: working directory, useful for monorepos
           working-directory: hybrid
