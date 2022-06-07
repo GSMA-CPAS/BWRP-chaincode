@@ -100,7 +100,7 @@ func (local Endpoint) SetOffchainDBConfig(uri string) error {
 	os.Setenv("CORE_PEER_LOCALMSPID", local.org.Name)
 
 	// set transient data for setting couchdb config
-	var transient map[string][]byte = make(map[string][]byte)
+	var transient = make(map[string][]byte)
 	transient["uri"] = []byte(uri)
 	local.stub.TransientMap = transient
 
