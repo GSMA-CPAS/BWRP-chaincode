@@ -29,6 +29,7 @@ func loadTLSFile(filePth string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return ioutil.ReadAll(f)
 }
 
@@ -37,6 +38,7 @@ func main() {
 		// set loglevel
 		log.SetLevel(log.DebugLevel)
 	}
+
 	roamingChaincode := contract.InitRoamingSmartContract()
 
 	// instantiate chaincode
@@ -51,29 +53,33 @@ func main() {
 	address, addressPresent := os.LookupEnv("CHAINCODE_ADDRESS")
 	tlsDisable, tlsDisablePresent := os.LookupEnv("CORE_CHAINCODE_TLS_DISABLED")
 
-	CORE_PEER_TLS_KEY_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_KEY_FILE"))
+	CorePeerTLSKeyFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_KEY_FILE"))
 	if err != nil {
 		log.Panicf("Error loadTLSFile : %s", err)
 	}
-	CORE_PEER_TLS_CERT_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CERT_FILE"))
+
+	CorePeerTLSCertFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CERT_FILE"))
+
 	if err != nil {
 		log.Panicf("Error loadTLSFile : %s", err)
 	}
-	CORE_PEER_TLS_ROOTCERT_FILE, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CLIENT_CACERT_FILE"))
+
+	CorePeerTLSRootCertFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CLIENT_CACERT_FILE"))
+
 	if err != nil {
 		log.Panicf("Error loadTLSFile : %s", err)
 	}
 
 	if ccidPresent || addressPresent || tlsDisablePresent {
 		// chaincode will run as external service
-
+		//
 		// make sure both variables are set up properly
 		if !addressPresent || !ccidPresent || !tlsDisablePresent {
 			log.Panicf("please make sure to export CORE_CHAINCODE_TLS_DISABLED, CHAINCODE_CCID and CHAINCODE_ADDRESS for external chaincode mode")
 			return
 		}
 
-		tlsDisableParsed, err := strconv.ParseBool(tlsDisable)
+		tlsDisableParsed, err := strconv.ParseBool(tlsDisable) //nolint:govet // ignore err shadow declaration
 		if err != nil {
 			log.Panicf("invalid value for tlsDisable")
 			return
@@ -86,9 +92,9 @@ func main() {
 			CC:      chaincode,
 			TLSProps: shim.TLSProperties{
 				Disabled:      tlsDisableParsed,
-				Key:           CORE_PEER_TLS_KEY_FILE,
-				Cert:          CORE_PEER_TLS_CERT_FILE,
-				ClientCACerts: CORE_PEER_TLS_ROOTCERT_FILE,
+				Key:           CorePeerTLSKeyFile,
+				Cert:          CorePeerTLSCertFile,
+				ClientCACerts: CorePeerTLSRootCertFile,
 			},
 		}
 
@@ -98,7 +104,6 @@ func main() {
 		if err != nil {
 			log.Panicf("failed to start external chaincode: %v", err)
 		}
-
 	} else {
 		// use the default way (dind)
 
