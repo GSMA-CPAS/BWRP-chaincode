@@ -53,23 +53,6 @@ func main() {
 	address, addressPresent := os.LookupEnv("CHAINCODE_ADDRESS")
 	tlsDisable, tlsDisablePresent := os.LookupEnv("CORE_CHAINCODE_TLS_DISABLED")
 
-	CorePeerTLSKeyFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_KEY_FILE"))
-	if err != nil {
-		log.Panicf("Error loadTLSFile : %s", err)
-	}
-
-	CorePeerTLSCertFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CERT_FILE"))
-
-	if err != nil {
-		log.Panicf("Error loadTLSFile : %s", err)
-	}
-
-	CorePeerTLSRootCertFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CLIENT_CACERT_FILE"))
-
-	if err != nil {
-		log.Panicf("Error loadTLSFile : %s", err)
-	}
-
 	if ccidPresent || addressPresent || tlsDisablePresent {
 		// chaincode will run as external service
 		//
@@ -79,7 +62,24 @@ func main() {
 			return
 		}
 
-		tlsDisableParsed, err := strconv.ParseBool(tlsDisable) //nolint:govet // ignore err shadow declaration
+		CorePeerTLSKeyFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_KEY_FILE")) //nolint:govet // ignore err shadow declaration
+		if err != nil {
+			log.Panicf("Error loadTLSFile : %s", err)
+		}
+
+		CorePeerTLSCertFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CERT_FILE"))
+
+		if err != nil {
+			log.Panicf("Error loadTLSFile : %s", err)
+		}
+
+		CorePeerTLSRootCertFile, err := loadTLSFile(os.Getenv("CORE_CHAINCODE_TLS_CLIENT_CACERT_FILE"))
+
+		if err != nil {
+			log.Panicf("Error loadTLSFile : %s", err)
+		}
+
+		tlsDisableParsed, err := strconv.ParseBool(tlsDisable)
 		if err != nil {
 			log.Panicf("invalid value for tlsDisable")
 			return
