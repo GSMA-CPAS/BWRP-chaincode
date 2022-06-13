@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2021 GSMA and all contributors.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 FROM alpine:3.13 as base
 
 # Add CA certificates and timezone data files
